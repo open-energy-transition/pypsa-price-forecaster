@@ -21,6 +21,18 @@ def test_year_split_needs_two_years(table):
         cross_validate(table[table.year == 2023], ["pypsa"])
 
 
+def test_forward_split_fits_on_earlier_years_only(table, small_lgbm):
+    predictions = cross_validate(table, ["pypsa", "lgbm"], split="forward")
+    assert predictions[table.year == 2019].isna().all().all()
+    assert predictions[table.year > 2019].notna().all().all()
+    # 2021 is predicted from 2019 alone, unlike in the year split
+    later = table.year == 2021
+    year = cross_validate(table, ["lgbm"], split="year")
+    assert not predictions.lgbm[later].equals(year.lgbm[later])
+    metrics = bus_metrics(table, predictions)
+    assert set(metrics.index.get_level_values("year")) == {2021, 2023}
+
+
 def test_week_split_predicts_held_out_weeks_of_one_year(table):
     one_year = table[table.year == 2023]
     predictions = cross_validate(one_year, ["pypsa", "lgbm"], split="week", folds=4)

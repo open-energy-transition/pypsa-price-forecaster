@@ -122,6 +122,7 @@ def evaluate(
         str,
         typer.Option(
             help=f"Fold split, one of {', '.join(SPLITS)}: one fold per year, "
+            "one fold per year fitted on the earlier years only, "
             "every n-th week of all years as fold n, or one fold per calendar month."
         ),
     ] = "year",

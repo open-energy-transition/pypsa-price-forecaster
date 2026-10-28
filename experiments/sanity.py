@@ -1,18 +1,28 @@
-"""Sanity checks of the 2023 table against the backcast metrics."""
+"""
+Sanity checks of the table of one backcast year against the metrics of the backcast.
+
+Usage: ``pixi run python experiments/sanity.py <year>``, with the backcast repository
+at ``../pypsa-eur-backcast`` or in the environment variable ``BACKCAST``.
+"""
+
+import os
+import sys
 
 import pandas as pd
 
 from pypsa_price_forecaster.dataset import FEATURES
 from pypsa_price_forecaster.evaluate import bus_metrics
 
-t = pd.read_parquet("data/tables/backcast-2023.parquet")
+year = sys.argv[1]
+backcast = os.environ.get("BACKCAST", "../pypsa-eur-backcast")
+t = pd.read_parquet(f"data/tables/backcast-{year}.parquet")
 m = (
     bus_metrics(t, t[["model_price"]].rename(columns={"model_price": "pypsa"}))
     .loc["pypsa"]
     .droplevel("year")
 )
 ref = pd.read_csv(
-    "../pypsa-eur-backcast/results/backcast-2023/backcast/price_metrics.csv",
+    f"{backcast}/results/backcast-{year}/backcast/price_metrics.csv",
     index_col="bus",
 )
 cmp = pd.DataFrame(

@@ -3,6 +3,8 @@ Runs cross-validation experiments on the extracted tables and appends the scores
 
 Usage: ``pixi run python experiments/run.py <experiment> [<experiment> ...]``
 
+The scores per held-out year go to ``experiments/results_by_year.csv``.
+
 Besides the median over buses of MAE, r and |bias|, the scores include the
 median MAE in the hours of each bus above its 95th (``mae_top5``) and below its
 5th (``mae_low5``) percentile of the observed price, where the backcast misses
@@ -110,10 +112,49 @@ EXPERIMENTS |= {
         split="month", features=["model_price"] + MARGINS, models=["lgbm"], params=LARGE
     ),
 }
+# Round 2: several years
+EXPERIMENTS |= {
+    "E19_year_default": dict(split="year", features=DEFAULT_FEATURES),
+    "E20_forward_default": dict(split="forward", features=DEFAULT_FEATURES),
+    # seed noise of E19
+    "E21_year_seed1": dict(
+        split="year",
+        features=DEFAULT_FEATURES,
+        models=["lgbm"],
+        params={"random_state": 1},
+    ),
+    "E22_year_seed2": dict(
+        split="year",
+        features=DEFAULT_FEATURES,
+        models=["lgbm"],
+        params={"random_state": 2},
+    ),
+    # features that leaked or extrapolated within 2023 alone
+    "E23_year_costs": dict(
+        split="year", features=DEFAULT_FEATURES + COSTS, models=LGBM
+    ),
+    "E24_forward_costs": dict(
+        split="forward", features=DEFAULT_FEATURES + COSTS, models=LGBM
+    ),
+    "E25_year_bus": dict(
+        split="year", features=DEFAULT_FEATURES + ["bus"], models=LGBM
+    ),
+    "E26_year_month": dict(
+        split="year", features=DEFAULT_FEATURES + ["month"], models=LGBM
+    ),
+    "E27_year_price_margins_only": dict(
+        split="year", features=["model_price"] + MARGINS, models=LGBM
+    ),
+    # the round 1 split on all years, to compare with the year split
+    "E28_month_default": dict(split="month", features=DEFAULT_FEATURES, models=LGBM),
+}
 MODELS = ["pypsa", "bus_bias", "linear", "lgbm"]
+RESULTS_BY_YEAR = Path("experiments/results_by_year.csv")
+COLUMNS = ["mae", "r", "abs_bias", "mae_top5", "mae_low5"]
 
 
-def run(name: str, table: pd.DataFrame) -> pd.DataFrame:
+def run(name: str, table: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Return the scores of experiment `name` over all years and per year."""
     spec = {"folds": 4, "models": MODELS} | EXPERIMENTS[name]
     start = time.time()
     predictions = cross_validate(
@@ -124,26 +165,38 @@ def run(name: str, table: pd.DataFrame) -> pd.DataFrame:
         spec["folds"],
         {"lgbm": spec.get("params", {})},
     )
-    result = scores(table, predictions)[
-        ["mae", "r", "abs_bias", "mae_top5", "mae_low5"]
-    ]
-    return (
-        result.round(3)
-        .reset_index(names="model")
-        .assign(
-            experiment=name,
-            split=spec["split"],
-            features=",".join(spec["features"]),
-            params=str(spec.get("params", {})),
-            seconds=round(time.time() - start),
-        )
+    seconds = round(time.time() - start)
+    predicted = predictions.notna().any(axis=1)
+    by_year = {
+        year: scores(table[rows], predictions[rows])[COLUMNS]
+        for year in sorted(table.year.unique())
+        if (rows := predicted & (table.year == year)).any()
+    }
+    labels = dict(
+        experiment=name,
+        split=spec["split"],
+        features=",".join(spec["features"]),
+        params=str(spec.get("params", {})),
+        seconds=seconds,
     )
+    result = scores(table, predictions)[COLUMNS].round(3).reset_index(names="model")
+    by_year = (
+        pd.concat(by_year, names=["year", "model"])
+        .round(3)
+        .reset_index()
+        .assign(experiment=name, split=spec["split"])
+    )
+    return result.assign(**labels), by_year
 
 
 if __name__ == "__main__":
     table = read_tables(TABLES)
     for name in sys.argv[1:]:
-        result = run(name, table)
+        result, by_year = run(name, table)
         print(f"\n== {name}")
         print(result.drop(columns=["experiment", "features"]).to_string(index=False))
+        print(by_year.drop(columns="experiment").to_string(index=False))
         result.to_csv(RESULTS, mode="a", header=not RESULTS.exists(), index=False)
+        by_year.to_csv(
+            RESULTS_BY_YEAR, mode="a", header=not RESULTS_BY_YEAR.exists(), index=False
+        )

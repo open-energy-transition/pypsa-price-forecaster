@@ -31,6 +31,7 @@ packages = ["src/pypsa_price_forecaster"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]

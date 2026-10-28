@@ -17,7 +17,9 @@ all other folds, so every row gets an out-of-sample prediction:
 
 The metrics per bus follow pypsa-eur-backcast (mean absolute error, root mean
 squared error, Pearson correlation and mean bias over hours with observed price)
-and the summary takes the median over buses per model and year.
+and the summary takes the median over buses per model and year. The scores add
+the error in the tails, where the backcast misses spikes and negative prices,
+and the spread of the predicted prices.
 """
 
 import logging
@@ -110,3 +112,39 @@ def summary(metrics: pd.DataFrame) -> pd.DataFrame:
             buses=("mae", "size"),
         )
     )
+
+
+def tail_mae(table: pd.DataFrame, predictions: pd.DataFrame) -> pd.DataFrame:
+    """Return the median over buses of the MAE in the top and bottom 5 % observed hours per model."""
+    rows = table[["bus", TARGET]].join(predictions).dropna(subset=[TARGET])
+    high = rows[TARGET] >= rows.groupby("bus")[TARGET].transform("quantile", 0.95)
+    low = rows[TARGET] <= rows.groupby("bus")[TARGET].transform("quantile", 0.05)
+    result = {}
+    for model in predictions:
+        error = (rows[model] - rows[TARGET]).abs()
+        result[model] = {
+            "mae_top5": error[high].groupby(rows.bus[high]).mean().median(),
+            "mae_low5": error[low].groupby(rows.bus[low]).mean().median(),
+        }
+    return pd.DataFrame(result).T
+
+
+def scores(table: pd.DataFrame, predictions: pd.DataFrame) -> pd.DataFrame:
+    """
+    Return one row of scores per model over all years.
+
+    Columns are the median over buses of MAE, r and |bias|, the tail MAEs of
+    :func:`tail_mae`, the ratio of the standard deviation of predicted to
+    observed prices and the share of hours at or below zero.
+    """
+    metrics = bus_metrics(table, predictions)
+    rows = table[[TARGET]].join(predictions).dropna(subset=[TARGET])
+    result = (
+        metrics.assign(abs_bias=metrics.bias.abs())
+        .groupby("model", sort=False)
+        .agg(mae=("mae", "median"), r=("r", "median"), abs_bias=("abs_bias", "median"))
+        .join(tail_mae(table, predictions))
+    )
+    result["std_ratio"] = [rows[m].std() / rows[TARGET].std() for m in result.index]
+    result["share_le_0"] = [(rows[m] <= 0).mean() for m in result.index]
+    return result

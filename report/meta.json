@@ -1,0 +1,45 @@
+{
+  "created": "2026-10-28T16:56:05+00:00",
+  "commit": "d0f12ae",
+  "dirty": true,
+  "version": "0.1.0",
+  "runs": [
+    "backcast-2023"
+  ],
+  "years": [
+    2023
+  ],
+  "split": "month",
+  "folds": 12,
+  "buses": 43,
+  "hours": 376630,
+  "features": [
+    "model_price",
+    "margin_domestic",
+    "margin_with_imports",
+    "hour",
+    "dayofweek",
+    "vres_share",
+    "curtailment_share",
+    "firm_utilisation",
+    "net_import_share",
+    "storage_share"
+  ],
+  "lgbm_params": {
+    "colsample_bytree": 0.9,
+    "learning_rate": 0.03,
+    "min_child_samples": 50,
+    "n_estimators": 800,
+    "num_leaves": 63,
+    "objective": "l1",
+    "random_state": 0,
+    "subsample": 0.8,
+    "subsample_freq": 1,
+    "verbose": -1
+  },
+  "seed_mae": [
+    16.6616,
+    16.6459,
+    16.7286
+  ]
+}

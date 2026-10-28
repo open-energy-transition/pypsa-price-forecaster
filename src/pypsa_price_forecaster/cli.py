@@ -21,6 +21,7 @@ from pypsa_price_forecaster.dataset import (
 from pypsa_price_forecaster.entsoe import observed_prices, read_area_to_bus
 from pypsa_price_forecaster.evaluate import SPLITS, bus_metrics, cross_validate, summary
 from pypsa_price_forecaster.models import DEFAULT_MODELS
+from pypsa_price_forecaster.report import write_report
 
 app = typer.Typer(
     help="Convert PyPSA marginal prices to day-ahead electricity prices.",
@@ -141,6 +142,27 @@ def evaluate(
     metrics.to_csv(out_dir / "bus_metrics.csv")
     scores.to_csv(out_dir / "summary.csv")
     typer.echo("Median over buses, out of sample:")
+    typer.echo(scores.round(3).to_string())
+
+
+@app.command()
+def report(
+    tables: Tables,
+    out_dir: Annotated[Path, typer.Option("--out-dir", "-o")] = Path("report"),
+    split: Annotated[
+        str | None,
+        typer.Option(help="Fold split, default: year with several years, else month."),
+    ] = None,
+    ablation: Annotated[
+        bool,
+        typer.Option(
+            help="Refit lgbm without and with each feature and with other seeds."
+        ),
+    ] = True,
+) -> None:
+    """Write the report of the default models that the dashboard shows."""
+    scores = write_report(read_tables(tables), out_dir, split, with_ablation=ablation)
+    typer.echo(f"Wrote the report to {out_dir}. Median over buses, out of sample:")
     typer.echo(scores.round(3).to_string())
 
 

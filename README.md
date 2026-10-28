@@ -82,6 +82,30 @@ To add a feature, add an entry to `FEATURES` in `dataset.py`, plus a column in `
 
 Experiments and their results are logged in [experiments/](experiments/).
 
+## Report and dashboard
+
+`ppf report` scores the default models on all tables and writes small files to `report/`, which is committed:
+
+- scores per model and year, per zone and per month;
+- feature impact: the default LightGBM refitted without each of its features and with each other feature, plus two seed repeats that give the noise level;
+- split gain per feature;
+- hourly market, PyPSA and corrected prices;
+- `history.csv`, with one row per report.
+
+It uses the year split once there are several years, otherwise the month split.
+
+```bash
+pixi run report                    # ppf report data/tables/*.parquet, ~45 min per year of tables
+pixi run report --no-ablation      # quick check without the feature impact
+pixi run -e dashboard dashboard    # streamlit run dashboard/app.py
+```
+
+The dashboard (`dashboard/app.py`) shows `report/` and the experiment log.
+Deploy it on Streamlit Community Cloud from the branch `master` with main file `dashboard/app.py`. It installs only `dashboard/requirements.txt`.
+It then always shows the report committed on master. Rerun `pixi run report` and commit `report/` whenever the code, defaults or tables change.
+A test fails if `report/` was written with other default features or LightGBM parameters than the code has.
+Set `PPF_REPORT` to show another report directory.
+
 ## License
 
 MIT

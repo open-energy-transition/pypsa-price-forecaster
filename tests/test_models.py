@@ -3,14 +3,8 @@ import pytest
 from typer.testing import CliRunner
 
 from pypsa_price_forecaster.cli import app
-from pypsa_price_forecaster.dataset import build_table
 from pypsa_price_forecaster.evaluate import bus_metrics, cross_validate, summary
 from pypsa_price_forecaster.models import DEFAULT_MODELS, load, make_model, save
-
-
-@pytest.fixture
-def table(run_files) -> pd.DataFrame:
-    return pd.concat([build_table(*f) for f in run_files], ignore_index=True)
 
 
 def test_learned_models_beat_raw_price_out_of_sample(table):

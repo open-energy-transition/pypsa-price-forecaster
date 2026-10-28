@@ -15,8 +15,8 @@ from pathlib import Path
 
 import pandas as pd
 
-from pypsa_price_forecaster.dataset import DEFAULT_FEATURES, TARGET, read_tables
-from pypsa_price_forecaster.evaluate import bus_metrics, cross_validate
+from pypsa_price_forecaster.dataset import DEFAULT_FEATURES, read_tables
+from pypsa_price_forecaster.evaluate import cross_validate, scores
 
 TABLES = sorted(Path("data/tables").glob("*.parquet"))
 RESULTS = Path("experiments/results.csv")
@@ -113,21 +113,6 @@ EXPERIMENTS |= {
 MODELS = ["pypsa", "bus_bias", "linear", "lgbm"]
 
 
-def tail_mae(table: pd.DataFrame, predictions: pd.DataFrame) -> pd.DataFrame:
-    """Return the median over buses of the MAE in the top and bottom 5 % observed hours per model."""
-    rows = table[["bus", TARGET]].join(predictions).dropna(subset=[TARGET])
-    high = rows[TARGET] >= rows.groupby("bus")[TARGET].transform("quantile", 0.95)
-    low = rows[TARGET] <= rows.groupby("bus")[TARGET].transform("quantile", 0.05)
-    result = {}
-    for model in predictions:
-        error = (rows[model] - rows[TARGET]).abs()
-        result[model] = {
-            "mae_top5": error[high].groupby(rows.bus[high]).mean().median(),
-            "mae_low5": error[low].groupby(rows.bus[low]).mean().median(),
-        }
-    return pd.DataFrame(result).T
-
-
 def run(name: str, table: pd.DataFrame) -> pd.DataFrame:
     spec = {"folds": 4, "models": MODELS} | EXPERIMENTS[name]
     start = time.time()
@@ -139,27 +124,26 @@ def run(name: str, table: pd.DataFrame) -> pd.DataFrame:
         spec["folds"],
         {"lgbm": spec.get("params", {})},
     )
-    metrics = bus_metrics(table, predictions)
-    scores = (
-        metrics.assign(abs_bias=metrics.bias.abs())
-        .groupby("model", sort=False)
-        .agg(mae=("mae", "median"), r=("r", "median"), abs_bias=("abs_bias", "median"))
-        .join(tail_mae(table, predictions))
-        .round(3)
-    )
-    return scores.reset_index().assign(
-        experiment=name,
-        split=spec["split"],
-        features=",".join(spec["features"]),
-        params=str(spec.get("params", {})),
-        seconds=round(time.time() - start),
+    result = scores(table, predictions)[
+        ["mae", "r", "abs_bias", "mae_top5", "mae_low5"]
+    ]
+    return (
+        result.round(3)
+        .reset_index(names="model")
+        .assign(
+            experiment=name,
+            split=spec["split"],
+            features=",".join(spec["features"]),
+            params=str(spec.get("params", {})),
+            seconds=round(time.time() - start),
+        )
     )
 
 
 if __name__ == "__main__":
     table = read_tables(TABLES)
     for name in sys.argv[1:]:
-        scores = run(name, table)
+        result = run(name, table)
         print(f"\n== {name}")
-        print(scores.drop(columns=["experiment", "features"]).to_string(index=False))
-        scores.to_csv(RESULTS, mode="a", header=not RESULTS.exists(), index=False)
+        print(result.drop(columns=["experiment", "features"]).to_string(index=False))
+        result.to_csv(RESULTS, mode="a", header=not RESULTS.exists(), index=False)

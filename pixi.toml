@@ -23,10 +23,19 @@ pypsa-price-forecaster = { path = ".", editable = true }
 pytest = ">=8"
 ruff = ">=0.6"
 
+[feature.dashboard.dependencies]
+plotly = ">=6"
+streamlit = ">=1.50"
+
+[feature.dashboard.tasks]
+dashboard = "streamlit run dashboard/app.py"
+
 [environments]
 default = { features = ["dev"], solve-group = "default" }
+dashboard = { features = ["dev", "dashboard"], solve-group = "default" }
 
 [tasks]
 test = "pytest"
 lint = "ruff check . && ruff format --check ."
 ppf = "ppf"
+report = "ppf -v report data/tables/*.parquet"

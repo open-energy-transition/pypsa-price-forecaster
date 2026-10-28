@@ -48,6 +48,31 @@ Seed noise is about ±0.06 MAE (E05, E10, E11), so differences below ~0.15 are n
 - **Loss:** the default absolute-error loss gives the best MAE. Squared error (E16) gives the best spike MAE (32.4) and bias (1.1) but MAE 17.42. Huber (E15) sits in between.
 - **`bus_bias` and `linear` baselines** barely beat raw PyPSA. The bias correction even worsens spike hours.
 
+### Feature ablation (report of 2026-10-28)
+
+`ppf report` refits the default model without each default feature and with each other feature (month split).
+Three seeds give a noise band of ±0.09 MAE (2σ).
+Positive numbers mean MAE rises.
+
+| removed | Δ MAE | | added | Δ MAE |
+|---|---|---|---|---|
+| hour | +1.19 | | month | −0.41 (leak) |
+| dayofweek | +0.65 | | bus | −0.28 |
+| storage_share | +0.53 | | price_deviation | −0.22 |
+| model_price | +0.17 | | margin_with_imports_mw | −0.18 |
+| curtailment_share | +0.11 | | margin_domestic_mw | −0.05 |
+| margin_with_imports | +0.11 | | price_daily_mean | +0.04 |
+| vres_share | +0.06 | | price_to_gas | +0.49 |
+| net_import_share | +0.05 | | cost_gas | +1.35 |
+| firm_utilisation | 0.00 | | cost_coal | +1.51 |
+| margin_domestic | −0.01 | | | |
+
+- Calendar and storage carry the most. Storage dispatch is the model's own signal of when prices peak within the day.
+- Thermal utilisation has the second highest split gain (15 %) but costs nothing to remove: the other features carry the same information.
+  Split gain is therefore a poor guide to which features to keep.
+- The domestic margin and the dispatch shares of renewables and net imports are within noise individually.
+- Margins in MW, intraday deviation and bus identity help a little, within one year. Retest with the year split before adding them.
+
 ### Defaults changed
 
 `DEFAULT_FEATURES` is now the E05 set, and the `lgbm` parameters are those of E14.

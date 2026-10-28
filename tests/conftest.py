@@ -125,3 +125,27 @@ def run_files(tmp_path) -> list[tuple]:
         observed_prices(extract(n), seed).to_csv(prices)
         files.append((network, prices))
     return files
+
+
+@pytest.fixture
+def table(run_files) -> pd.DataFrame:
+    """Tables of the three runs with observed prices."""
+    from pypsa_price_forecaster.dataset import build_table
+
+    return pd.concat([build_table(*f) for f in run_files], ignore_index=True)
+
+
+@pytest.fixture
+def small_lgbm(monkeypatch):
+    """Use fewer trees, as the report refits lgbm many times."""
+    from pypsa_price_forecaster import models
+
+    base_model = models.base_model
+
+    def small(name, features):
+        model = base_model(name, features)
+        if name == "lgbm":
+            model.estimator.set_params(n_estimators=100, learning_rate=0.1)
+        return model
+
+    monkeypatch.setattr(models, "base_model", small)

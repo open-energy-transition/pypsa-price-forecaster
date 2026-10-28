@@ -156,6 +156,12 @@ def read_experiments() -> pd.DataFrame:
     return pd.read_csv(EXPERIMENTS / "results.csv")
 
 
+def read_experiments_by_year() -> pd.DataFrame | None:
+    """Return the per-year experiment scores of ``experiments/results_by_year.csv``, if any."""
+    path = EXPERIMENTS / "results_by_year.csv"
+    return pd.read_csv(path) if path.exists() else None
+
+
 def read_notes() -> str:
     """Return the experiment notes, with links relative to the repository."""
     return (EXPERIMENTS / "NOTES.md").read_text()

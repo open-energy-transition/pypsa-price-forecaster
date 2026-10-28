@@ -16,6 +16,7 @@ from dashboard.data import (
     feature_label,
     label,
     read_experiments,
+    read_experiments_by_year,
     read_notes,
     read_report,
 )
@@ -247,6 +248,15 @@ def experiments() -> None:
     st.plotly_chart(charts.experiment_dots(log), width="stretch")
     with st.expander("All scores"):
         st.dataframe(log.drop(columns="features"), width="stretch", hide_index=True)
+    by_year = read_experiments_by_year()
+    if by_year is not None:
+        with st.expander("Scores per held-out year"):
+            st.dataframe(
+                by_year.pivot_table(
+                    "mae", ["experiment", "split", "model"], "year", sort=False
+                ).round(2),
+                width="stretch",
+            )
     st.divider()
     # one heading level down, below the page title
     st.markdown(re.sub(r"^#", "##", read_notes(), flags=re.MULTILINE))

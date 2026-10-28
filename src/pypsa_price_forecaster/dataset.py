@@ -72,8 +72,8 @@ def read_observed_prices(path: str | Path) -> pd.DataFrame:
 
 
 def build_table(
-    network: str | Path,
-    prices: str | Path | None = None,
+    network: str | Path | pypsa.Network,
+    prices: str | Path | pd.DataFrame | None = None,
     run: str | None = None,
 ) -> pd.DataFrame:
     """
@@ -81,19 +81,28 @@ def build_table(
 
     Parameters
     ----------
-    network : str | Path
-        Path to the solved network.
-    prices : str | Path | None
-        Path to the wide CSV of observed prices per bus, see :func:`read_observed_prices`.
+    network : str | Path | pypsa.Network
+        Solved network or its path.
+    prices : str | Path | pd.DataFrame | None
+        Observed prices per bus, wide with naive UTC hours as index, or the path
+        to such a CSV, see :func:`read_observed_prices`.
     run : str | None
         Name of the run, defaults to the file name of `network` without suffix.
     """
-    network = Path(network)
-    table = extract(pypsa.Network(network))
-    table.insert(0, "run", run or network.stem)
+    if not isinstance(network, pypsa.Network):
+        run = run or Path(network).stem
+        network = pypsa.Network(network)
+    if run is None:
+        raise ValueError("A run name is needed for networks not read from a file")
+    table = extract(network)
+    table.insert(0, "run", run)
     table.insert(1, "year", int(table.snapshot.dt.year.mode().iat[0]))
     if prices is not None:
-        observed = read_observed_prices(prices)
+        observed = (
+            to_long(prices, "bus", TARGET)
+            if isinstance(prices, pd.DataFrame)
+            else read_observed_prices(prices)
+        )
         table = table.merge(observed, on=["snapshot", "bus"], how="left")
         matched = table[TARGET].notna()
         logger.info(
@@ -102,7 +111,7 @@ def build_table(
         )
         if not matched.any():
             raise ValueError(
-                f"No observed price in {prices} matches the snapshots and buses of {network}"
+                f"No observed price matches the snapshots and buses of run {run}"
             )
     return table
 

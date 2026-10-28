@@ -21,20 +21,20 @@ The CLI is `ppf` (long name `pypsa-price-forecaster`). Run it with `pixi run ppf
 
 ## Workflow
 
-The input is a solved network from pypsa-eur-backcast and, for training, the observed prices it builds:
-
-- `results/backcast-<year>/networks/solved_<year>.nc`
-- `resources/backcast-<year>/day_ahead_prices.csv`: naive UTC hours by bus, from ENTSO-E
+The input is a solved network from pypsa-eur-backcast, e.g. `results/backcast-<year>/networks/solved_<year>.nc`.
+For training, the observed prices come either from ENTSO-E (`--entsoe`) or from a wide CSV of naive UTC hours by bus (`--prices`), such as `day_ahead_prices.csv` built by the backcast.
 
 ```bash
 # 1. one table per run, with observed prices for training years
-ppf extract ../pypsa-eur-backcast/results/backcast-2019/networks/solved_2019.nc \
-    --prices ../pypsa-eur-backcast/resources/backcast-2019/day_ahead_prices.csv \
+export ENTSOE_API_TOKEN=...
+ppf extract ../pypsa-eur-backcast/results/backcast-2019/networks/solved_2019.nc --entsoe \
     --out data/tables/backcast-2019.parquet --run backcast-2019
-ppf extract ...2023... --out data/tables/backcast-2023.parquet --run backcast-2023
+ppf extract ...2023... --entsoe --out data/tables/backcast-2023.parquet --run backcast-2023
 
-# 2. out-of-sample score: every year predicted by models fitted on the other years
+# 2. out-of-sample score: every year predicted by models fitted on the other years,
+#    or with --split week every 4th week of all years as one fold
 ppf evaluate data/tables/*.parquet --out-dir results/evaluation
+ppf evaluate data/tables/*.parquet --out-dir results/evaluation-week --split week --folds 4
 
 # 3. fit on all years and predict any solved network, also a future one without observed prices
 ppf train data/tables/*.parquet --out models/lgbm.joblib
@@ -53,6 +53,18 @@ table = ppf.build_table("solved_2023.nc", "day_ahead_prices.csv")
 model = ppf.make_model("lgbm").fit(train_table)
 prices = model.predict(table)
 ```
+
+## Observed prices
+
+`extract --entsoe` downloads the day-ahead prices per ENTSO-E bidding zone and calendar year in UTC and caches them in `data/entsoe` (`--cache-dir`).
+The token is read from `ENTSOE_API_TOKEN` and is only needed for downloads that are not cached yet.
+Prices are averaged to hours (they are quarter-hourly since October 2025), gaps of up to 3 hours are interpolated and longer gaps stay missing.
+
+Areas without published prices or with prices not in EUR (GB, and PL, RO and BG in 2019) are skipped with a warning.
+A `.skip` file in the cache records the reason, so delete it to query the area again.
+
+Buses are mapped to areas with the map of pypsa-eur-backcast (`src/pypsa_price_forecaster/data/entsoe_area_to_bus.csv`), or another one with `--area-to-bus`.
+FR15 (Corsica) gets no price, as it is not coupled to the French day-ahead market.
 
 ## Inputs from the network
 
@@ -101,9 +113,14 @@ A learned model is worth its complexity only if it beats `bus_bias` out of sampl
 
 ## Evaluation
 
-The score is leave-one-year-out: every year is predicted by models fitted on all other years.
-The years differ in fuel and carbon prices, so this measures how well the correction carries over to an unseen market regime.
-With only two years this is one fit per direction, so the score gets more reliable with every year added.
+The rows are split into folds and every fold is predicted by models fitted on all other folds, so every hour gets an out-of-sample prediction.
+
+- `--split year` (default): one fold per year.
+  The years differ in fuel and carbon prices, so this measures how well the correction carries over to an unseen market regime.
+  With only two years this is one fit per direction, so the score gets more reliable with every year added.
+- `--split week --folds K`: weeks are counted from 1 January and every K-th week of all years forms one fold.
+  Every season and year is in both training and test, so this works with a single year.
+  It is optimistic, as the model has seen the price level of the neighbouring weeks, so use it until more years are available and expect the year split to score worse.
 
 ## Roadmap
 

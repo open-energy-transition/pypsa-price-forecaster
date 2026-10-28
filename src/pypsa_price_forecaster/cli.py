@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Annotated
 
 import pandas as pd
+import pypsa
 import typer
 
 from pypsa_price_forecaster import models as model_io
@@ -17,7 +18,8 @@ from pypsa_price_forecaster.dataset import (
     build_table,
     read_tables,
 )
-from pypsa_price_forecaster.evaluate import bus_metrics, leave_one_year_out, summary
+from pypsa_price_forecaster.entsoe import observed_prices, read_area_to_bus
+from pypsa_price_forecaster.evaluate import SPLITS, bus_metrics, cross_validate, summary
 from pypsa_price_forecaster.models import DEFAULT_MODELS
 
 app = typer.Typer(
@@ -60,12 +62,40 @@ def extract(
             "(resources/day_ahead_prices.csv of pypsa-eur-backcast)."
         ),
     ] = None,
+    entsoe: Annotated[
+        bool,
+        typer.Option(
+            "--entsoe",
+            help="Download the observed prices from the ENTSO-E Transparency Platform "
+            "(token in ENTSOE_API_TOKEN).",
+        ),
+    ] = False,
+    cache_dir: Annotated[
+        Path, typer.Option(help="Cache of the ENTSO-E downloads.")
+    ] = Path("data/entsoe"),
+    area_to_bus: Annotated[
+        Path | None,
+        typer.Option(
+            help="CSV mapping buses to ENTSO-E areas (columns bus, entsoe_area), "
+            "default: the map of pypsa-eur-backcast."
+        ),
+    ] = None,
     run: Annotated[
         str | None, typer.Option(help="Run name, default: network file name.")
     ] = None,
 ) -> None:
     """Extract the hourly model price, load, supply and import capacity per bus."""
-    table = build_table(network, prices, run)
+    if entsoe and prices is not None:
+        raise typer.BadParameter("Give either --prices or --entsoe, not both.")
+    n = pypsa.Network(network)
+    if entsoe:
+        prices = observed_prices(
+            n.buses.index[n.buses.carrier == "AC"],
+            n.snapshots,
+            cache_dir,
+            read_area_to_bus(area_to_bus),
+        )
+    table = build_table(n, prices, run or network.stem)
     out.parent.mkdir(parents=True, exist_ok=True)
     table.to_parquet(out, index=False)
     typer.echo(
@@ -87,10 +117,20 @@ def evaluate(
         ),
     ] = None,
     feature: Features = None,
+    split: Annotated[
+        str,
+        typer.Option(
+            help=f"Fold split, one of {', '.join(SPLITS)}: one fold per year, "
+            "or every n-th week of all years as fold n."
+        ),
+    ] = "year",
+    folds: Annotated[
+        int, typer.Option(help="Number of folds of the week split.", min=2)
+    ] = 4,
 ) -> None:
-    """Predict every year with models fitted on the other years and score against observed prices."""
+    """Predict every fold with models fitted on the other folds and score against observed prices."""
     table = read_tables(tables)
-    predictions = leave_one_year_out(table, model or DEFAULT_MODELS, feature)
+    predictions = cross_validate(table, model or DEFAULT_MODELS, feature, split, folds)
     metrics = bus_metrics(table, predictions)
     scores = summary(metrics)
 

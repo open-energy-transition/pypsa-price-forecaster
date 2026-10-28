@@ -1,11 +1,20 @@
 """
-Out-of-sample evaluation of the models by leaving one year out.
+Out-of-sample evaluation of the models by cross-validation over years or weeks.
 
-Every year in the table is predicted by models fitted on all other years, so
-no hour of the predicted year is seen in training. The metrics per bus follow
-pypsa-eur-backcast (mean absolute error, root mean squared error, Pearson
-correlation and mean bias over hours with observed price) and the summary
-takes the median over buses per model and year.
+The rows are split into folds and every fold is predicted by models fitted on
+all other folds, so every row gets an out-of-sample prediction:
+
+- ``year``: one fold per year. No hour of the predicted year is seen in
+  training, which measures how the correction carries over to an unseen year
+  with its own fuel and carbon prices.
+- ``week``: every ``folds``-th week of the year (weeks counted from 1 January)
+  forms a fold across all years. Every season and year is in training and test,
+  which works with a single year but is optimistic, as the fitted correction has
+  seen the price level of the neighbouring weeks.
+
+The metrics per bus follow pypsa-eur-backcast (mean absolute error, root mean
+squared error, Pearson correlation and mean bias over hours with observed price)
+and the summary takes the median over buses per model and year.
 """
 
 import logging
@@ -19,18 +28,38 @@ from pypsa_price_forecaster.models import make_model
 logger = logging.getLogger(__name__)
 
 
-def leave_one_year_out(
-    table: pd.DataFrame, models: list[str], features: list[str] | None = None
+SPLITS = ["year", "week"]
+
+
+def fold_labels(table: pd.DataFrame, split: str, folds: int = 4) -> pd.Series:
+    """Return the fold of every row of `table` for the `split`, see the module docstring."""
+    if split == "year":
+        return table.year
+    if split == "week":
+        week = (table.snapshot.dt.day_of_year - 1) // 7
+        return week % folds
+    raise ValueError(f"Unknown split {split}, available: {SPLITS}")
+
+
+def cross_validate(
+    table: pd.DataFrame,
+    models: list[str],
+    features: list[str] | None = None,
+    split: str = "year",
+    folds: int = 4,
 ) -> pd.DataFrame:
     """Return the out-of-sample price of every row of `table`, one column per model."""
-    years = sorted(table.year.unique())
-    if len(years) < 2:
-        raise ValueError(f"Leaving one year out needs at least two years, got {years}")
+    labels = fold_labels(table, split, folds)
+    if labels.nunique() < 2:
+        raise ValueError(
+            f"Splitting by {split} needs at least two folds, got {sorted(labels.unique())}. "
+            "With a single year, split by week."
+        )
     predictions = pd.DataFrame(np.nan, index=table.index, columns=models)
-    for year in years:
-        test = table.year == year
+    for label in sorted(labels.unique()):
+        test = labels == label
         for name in models:
-            logger.info(f"Predicting {year} with {name} fitted on the other years.")
+            logger.info(f"Predicting {split} fold {label} with {name}.")
             model = make_model(name, features).fit(table[~test])
             predictions.loc[test, name] = model.predict(table[test])
     return predictions

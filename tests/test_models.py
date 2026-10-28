@@ -4,7 +4,7 @@ from typer.testing import CliRunner
 
 from pypsa_price_forecaster.cli import app
 from pypsa_price_forecaster.dataset import build_table
-from pypsa_price_forecaster.evaluate import bus_metrics, leave_one_year_out, summary
+from pypsa_price_forecaster.evaluate import bus_metrics, cross_validate, summary
 from pypsa_price_forecaster.models import DEFAULT_MODELS, load, make_model, save
 
 
@@ -14,7 +14,7 @@ def table(run_files) -> pd.DataFrame:
 
 
 def test_learned_models_beat_raw_price_out_of_sample(table):
-    predictions = leave_one_year_out(table, DEFAULT_MODELS)
+    predictions = cross_validate(table, DEFAULT_MODELS)
     assert predictions.notna().all().all()
     mae = summary(bus_metrics(table, predictions)).mae.groupby("model").mean()
     assert mae["bus_bias"] < mae["pypsa"]
@@ -22,9 +22,17 @@ def test_learned_models_beat_raw_price_out_of_sample(table):
     assert mae["lgbm"] < mae["linear"]
 
 
-def test_leave_one_year_out_needs_two_years(table):
-    with pytest.raises(ValueError, match="at least two years"):
-        leave_one_year_out(table[table.year == 2023], ["pypsa"])
+def test_year_split_needs_two_years(table):
+    with pytest.raises(ValueError, match="split by week"):
+        cross_validate(table[table.year == 2023], ["pypsa"])
+
+
+def test_week_split_predicts_held_out_weeks_of_one_year(table):
+    one_year = table[table.year == 2023]
+    predictions = cross_validate(one_year, ["pypsa", "lgbm"], split="week", folds=4)
+    assert predictions.notna().all().all()
+    mae = summary(bus_metrics(one_year, predictions)).mae
+    assert mae["lgbm", 2023] < mae["pypsa", 2023]
 
 
 def test_saved_model_predicts_the_same(table, tmp_path):
@@ -52,6 +60,9 @@ def test_cli_extract_evaluate_train_predict(run_files, tmp_path):
 
     result = invoke(
         "evaluate", *tables, "--out-dir", tmp_path / "eval", "-m", "pypsa", "-m", "lgbm"
+    )
+    invoke(
+        "evaluate", tables[0], "--out-dir", tmp_path / "eval_week", "--split", "week"
     )
     assert "lgbm" in result.output
     scores = pd.read_csv(tmp_path / "eval" / "summary.csv")

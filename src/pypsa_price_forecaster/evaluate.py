@@ -7,6 +7,8 @@ all other folds, so every row gets an out-of-sample prediction:
 - ``year``: one fold per year. No hour of the predicted year is seen in
   training, which measures how the correction carries over to an unseen year
   with its own fuel and carbon prices.
+- ``forward``: one fold per year, fitted only on the earlier years, as when the
+  model corrects a future run. The first year is not predicted and not scored.
 - ``week``: every ``folds``-th week of the year (weeks counted from 1 January)
   forms a fold across all years. Every season and year is in training and test,
   which works with a single year but is optimistic, as the fitted correction has
@@ -33,12 +35,12 @@ from pypsa_price_forecaster.models import make_model
 logger = logging.getLogger(__name__)
 
 
-SPLITS = ["year", "week", "month"]
+SPLITS = ["year", "forward", "week", "month"]
 
 
 def fold_labels(table: pd.DataFrame, split: str, folds: int = 4) -> pd.Series:
     """Return the fold of every row of `table` for the `split`, see the module docstring."""
-    if split == "year":
+    if split in ("year", "forward"):
         return table.year
     if split == "week":
         week = (table.snapshot.dt.day_of_year - 1) // 7
@@ -56,7 +58,11 @@ def cross_validate(
     folds: int = 4,
     params: dict[str, dict] | None = None,
 ) -> pd.DataFrame:
-    """Return the out-of-sample price of every row of `table`, one column per model, with estimator `params` per model."""
+    """
+    Return the out-of-sample price of every row of `table`, one column per model, with estimator `params` per model.
+
+    Rows of the first year of the ``forward`` split have no prediction.
+    """
     labels = fold_labels(table, split, folds)
     if labels.nunique() < 2:
         raise ValueError(
@@ -64,19 +70,35 @@ def cross_validate(
             "With a single year, split by week."
         )
     predictions = pd.DataFrame(np.nan, index=table.index, columns=models)
-    for label in sorted(labels.unique()):
+    fold_values = sorted(labels.unique())
+    if split == "forward":
+        fold_values = fold_values[1:]
+    for label in fold_values:
         test = labels == label
+        train = labels < label if split == "forward" else ~test
         for name in models:
             logger.info(f"Predicting {split} fold {label} with {name}.")
             model = make_model(name, features, (params or {}).get(name))
-            model = model.fit(table[~test])
+            model = model.fit(table[train])
             predictions.loc[test, name] = model.predict(table[test])
     return predictions
 
 
+def scored_rows(
+    table: pd.DataFrame, columns: list[str], predictions: pd.DataFrame
+) -> pd.DataFrame:
+    """Return `columns` of `table` joined with `predictions` over the rows with observed and predicted price."""
+    return (
+        table[columns]
+        .join(predictions)
+        .dropna(subset=[TARGET])
+        .dropna(subset=list(predictions), how="all")
+    )
+
+
 def bus_metrics(table: pd.DataFrame, predictions: pd.DataFrame) -> pd.DataFrame:
-    """Return the metrics per model, year and bus over the rows with observed price."""
-    rows = table[["year", "bus", TARGET]].join(predictions).dropna(subset=[TARGET])
+    """Return the metrics per model, year and bus over the rows with observed and predicted price."""
+    rows = scored_rows(table, ["year", "bus", TARGET], predictions)
     metrics = {}
     for model in predictions:
         error = rows[model] - rows[TARGET]
@@ -116,7 +138,7 @@ def summary(metrics: pd.DataFrame) -> pd.DataFrame:
 
 def tail_mae(table: pd.DataFrame, predictions: pd.DataFrame) -> pd.DataFrame:
     """Return the median over buses of the MAE in the top and bottom 5 % observed hours per model."""
-    rows = table[["bus", TARGET]].join(predictions).dropna(subset=[TARGET])
+    rows = scored_rows(table, ["bus", TARGET], predictions)
     high = rows[TARGET] >= rows.groupby("bus")[TARGET].transform("quantile", 0.95)
     low = rows[TARGET] <= rows.groupby("bus")[TARGET].transform("quantile", 0.05)
     result = {}
@@ -138,7 +160,7 @@ def scores(table: pd.DataFrame, predictions: pd.DataFrame) -> pd.DataFrame:
     observed prices and the share of hours at or below zero.
     """
     metrics = bus_metrics(table, predictions)
-    rows = table[[TARGET]].join(predictions).dropna(subset=[TARGET])
+    rows = scored_rows(table, [TARGET], predictions)
     result = (
         metrics.assign(abs_bias=metrics.bias.abs())
         .groupby("model", sort=False)

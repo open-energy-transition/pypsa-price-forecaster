@@ -11,6 +11,9 @@ all other folds, so every row gets an out-of-sample prediction:
   forms a fold across all years. Every season and year is in training and test,
   which works with a single year but is optimistic, as the fitted correction has
   seen the price level of the neighbouring weeks.
+- ``month``: one fold per calendar month across all years. Contiguous blocks
+  leak less of the price level than interleaved weeks, but the fitted
+  correction has still seen the rest of the year.
 
 The metrics per bus follow pypsa-eur-backcast (mean absolute error, root mean
 squared error, Pearson correlation and mean bias over hours with observed price)
@@ -28,7 +31,7 @@ from pypsa_price_forecaster.models import make_model
 logger = logging.getLogger(__name__)
 
 
-SPLITS = ["year", "week"]
+SPLITS = ["year", "week", "month"]
 
 
 def fold_labels(table: pd.DataFrame, split: str, folds: int = 4) -> pd.Series:
@@ -38,6 +41,8 @@ def fold_labels(table: pd.DataFrame, split: str, folds: int = 4) -> pd.Series:
     if split == "week":
         week = (table.snapshot.dt.day_of_year - 1) // 7
         return week % folds
+    if split == "month":
+        return table.snapshot.dt.month
     raise ValueError(f"Unknown split {split}, available: {SPLITS}")
 
 
@@ -47,8 +52,9 @@ def cross_validate(
     features: list[str] | None = None,
     split: str = "year",
     folds: int = 4,
+    params: dict[str, dict] | None = None,
 ) -> pd.DataFrame:
-    """Return the out-of-sample price of every row of `table`, one column per model."""
+    """Return the out-of-sample price of every row of `table`, one column per model, with estimator `params` per model."""
     labels = fold_labels(table, split, folds)
     if labels.nunique() < 2:
         raise ValueError(
@@ -60,7 +66,8 @@ def cross_validate(
         test = labels == label
         for name in models:
             logger.info(f"Predicting {split} fold {label} with {name}.")
-            model = make_model(name, features).fit(table[~test])
+            model = make_model(name, features, (params or {}).get(name))
+            model = model.fit(table[~test])
             predictions.loc[test, name] = model.predict(table[test])
     return predictions
 

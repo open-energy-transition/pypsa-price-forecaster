@@ -28,23 +28,45 @@ def supply(table: pd.DataFrame) -> pd.Series:
     return table.supply_firm + table.supply_vres + table.supply_storage
 
 
+def daily_mean_price(table: pd.DataFrame) -> pd.Series:
+    """Mean model price of the bus over the UTC day of each row."""
+    days = [table.run, table.bus, table.snapshot.dt.date]
+    return table.groupby(days).model_price.transform("mean")
+
+
 FEATURES: dict[str, Callable[[pd.DataFrame], pd.Series]] = {
     "model_price": lambda t: t.model_price,
     "margin_domestic": lambda t: (supply(t) - t.load) / t.load,
     "margin_with_imports": lambda t: (supply(t) + t.import_capacity - t.load) / t.load,
     "margin_domestic_mw": lambda t: supply(t) - t.load,
     "margin_with_imports_mw": lambda t: supply(t) + t.import_capacity - t.load,
+    "vres_share": lambda t: t.supply_vres / t.load,
+    "curtailment_share": lambda t: (t.supply_vres - t.dispatch_vres) / t.load,
+    "firm_utilisation": lambda t: t.dispatch_firm / t.supply_firm,
+    "net_import_share": lambda t: t.net_import / t.load,
+    "storage_share": lambda t: t.storage_dispatch / t.load,
+    "cost_gas": lambda t: t.cost_gas,
+    "cost_coal": lambda t: t.cost_coal,
+    "price_to_gas": lambda t: t.model_price / t.cost_gas,
+    "price_daily_mean": daily_mean_price,
+    "price_deviation": lambda t: t.model_price - daily_mean_price(t),
+    "bus": lambda t: t.bus.astype("category"),
     "hour": lambda t: t.snapshot.dt.hour,
     "dayofweek": lambda t: t.snapshot.dt.day_of_week,
     "month": lambda t: t.snapshot.dt.month,
 }
+# best set on 2023 (experiments/NOTES.md); month leaks the price level of the year
 DEFAULT_FEATURES = [
     "model_price",
     "margin_domestic",
     "margin_with_imports",
     "hour",
     "dayofweek",
-    "month",
+    "vres_share",
+    "curtailment_share",
+    "firm_utilisation",
+    "net_import_share",
+    "storage_share",
 ]
 
 

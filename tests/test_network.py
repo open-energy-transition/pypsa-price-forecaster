@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 import pytest
 
 from pypsa_price_forecaster.dataset import DEFAULT_FEATURES, build_table, feature_matrix
@@ -45,3 +46,22 @@ def test_build_table_reads_network_and_prices(run_files):
 def test_unknown_feature_raises(network):
     with pytest.raises(ValueError, match="Unknown features"):
         feature_matrix(extract(network), ["temperature"])
+
+
+def test_extract_reads_solved_dispatch_flows_and_costs(network):
+    n = network
+    n.generators.loc["A gas", "marginal_cost"] = 70.0
+    n.generators_t["p"] = n.get_switchable_as_dense("Generator", "p_max_pu")[
+        ["A solar", "A gas"]
+    ] * [25, 60]
+    n.links_t["p0"] = pd.DataFrame({"A->B1": 10.0}, index=n.snapshots)
+    n.links_t["p1"] = -n.links_t["p0"]
+    table = extract(n)
+
+    a = table[table.bus == "A"].set_index("snapshot")
+    assert np.allclose(a.dispatch_vres, n.generators_t.p_max_pu["A solar"] * 25)
+    assert np.allclose(a.dispatch_firm, 60)
+    assert np.allclose(a.net_import, -10)
+    assert np.allclose(table[table.bus == "B2"].net_import, 10)
+    assert np.allclose(table.cost_gas, 70)
+    assert np.allclose(table.storage_dispatch, 0)

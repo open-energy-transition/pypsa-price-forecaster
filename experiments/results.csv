@@ -1,0 +1,36 @@
+model,mae,r,abs_bias,mae_top5,mae_low5,experiment,split,features,params,seconds
+pypsa,21.029,0.752,6.672,39.706,46.685,E01_week4_default,week,"model_price,margin_domestic,margin_with_imports,hour,dayofweek,month",{},17
+bus_bias,20.309,0.75,1.961,42.756,42.222,E01_week4_default,week,"model_price,margin_domestic,margin_with_imports,hour,dayofweek,month",{},17
+linear,20.377,0.762,5.044,41.869,41.494,E01_week4_default,week,"model_price,margin_domestic,margin_with_imports,hour,dayofweek,month",{},17
+lgbm,15.466,0.833,2.265,32.679,30.224,E01_week4_default,week,"model_price,margin_domestic,margin_with_imports,hour,dayofweek,month",{},17
+pypsa,21.029,0.752,6.672,39.706,46.685,E02_month_default,month,"model_price,margin_domestic,margin_with_imports,hour,dayofweek,month",{},79
+bus_bias,20.774,0.747,1.944,42.774,41.79,E02_month_default,month,"model_price,margin_domestic,margin_with_imports,hour,dayofweek,month",{},79
+linear,20.329,0.753,4.754,40.782,42.046,E02_month_default,month,"model_price,margin_domestic,margin_with_imports,hour,dayofweek,month",{},79
+lgbm,17.818,0.806,3.137,34.309,32.68,E02_month_default,month,"model_price,margin_domestic,margin_with_imports,hour,dayofweek,month",{},79
+pypsa,21.029,0.752,6.672,39.706,46.685,E03_week4_no_month,week,"model_price,margin_domestic,margin_with_imports,hour,dayofweek",{},26
+bus_bias,20.309,0.75,1.961,42.756,42.222,E03_week4_no_month,week,"model_price,margin_domestic,margin_with_imports,hour,dayofweek",{},26
+linear,20.617,0.761,5.074,42.892,40.048,E03_week4_no_month,week,"model_price,margin_domestic,margin_with_imports,hour,dayofweek",{},26
+lgbm,17.49,0.811,3.561,35.205,34.147,E03_week4_no_month,week,"model_price,margin_domestic,margin_with_imports,hour,dayofweek",{},26
+pypsa,21.029,0.752,6.672,39.706,46.685,E04_month_no_month,month,"model_price,margin_domestic,margin_with_imports,hour,dayofweek",{},54
+bus_bias,20.774,0.747,1.944,42.774,41.79,E04_month_no_month,month,"model_price,margin_domestic,margin_with_imports,hour,dayofweek",{},54
+linear,20.739,0.758,5.075,42.967,39.997,E04_month_no_month,month,"model_price,margin_domestic,margin_with_imports,hour,dayofweek",{},54
+lgbm,18.282,0.796,3.369,35.09,32.73,E04_month_no_month,month,"model_price,margin_domestic,margin_with_imports,hour,dayofweek",{},54
+pypsa,21.029,0.752,6.672,39.706,46.685,E05_month_system,month,"model_price,margin_domestic,margin_with_imports,hour,dayofweek,vres_share,curtailment_share,firm_utilisation,net_import_share,storage_share",{},48
+lgbm,16.957,0.825,1.718,34.142,30.103,E05_month_system,month,"model_price,margin_domestic,margin_with_imports,hour,dayofweek,vres_share,curtailment_share,firm_utilisation,net_import_share,storage_share",{},48
+pypsa,21.029,0.752,6.672,39.706,46.685,E06_month_system_costs,month,"model_price,margin_domestic,margin_with_imports,hour,dayofweek,vres_share,curtailment_share,firm_utilisation,net_import_share,storage_share,cost_gas,cost_coal,price_to_gas",{},48
+lgbm,17.201,0.82,2.483,33.457,34.043,E06_month_system_costs,month,"model_price,margin_domestic,margin_with_imports,hour,dayofweek,vres_share,curtailment_share,firm_utilisation,net_import_share,storage_share,cost_gas,cost_coal,price_to_gas",{},48
+pypsa,21.029,0.752,6.672,39.706,46.685,E07_month_system_costs_shape,month,"model_price,margin_domestic,margin_with_imports,hour,dayofweek,vres_share,curtailment_share,firm_utilisation,net_import_share,storage_share,cost_gas,cost_coal,price_to_gas,price_daily_mean,price_deviation",{},74
+lgbm,17.436,0.821,2.143,35.219,33.4,E07_month_system_costs_shape,month,"model_price,margin_domestic,margin_with_imports,hour,dayofweek,vres_share,curtailment_share,firm_utilisation,net_import_share,storage_share,cost_gas,cost_coal,price_to_gas,price_daily_mean,price_deviation",{},74
+pypsa,21.029,0.752,6.672,39.706,46.685,E08_month_all_bus,month,"model_price,margin_domestic,margin_with_imports,hour,dayofweek,vres_share,curtailment_share,firm_utilisation,net_import_share,storage_share,cost_gas,cost_coal,price_to_gas,price_daily_mean,price_deviation,bus",{},78
+lgbm,17.078,0.827,2.589,35.154,32.559,E08_month_all_bus,month,"model_price,margin_domestic,margin_with_imports,hour,dayofweek,vres_share,curtailment_share,firm_utilisation,net_import_share,storage_share,cost_gas,cost_coal,price_to_gas,price_daily_mean,price_deviation,bus",{},78
+pypsa,21.029,0.752,6.672,39.706,46.685,E09_month_bus_only,month,"model_price,margin_domestic,margin_with_imports,hour,dayofweek,bus",{},43
+lgbm,17.496,0.802,2.096,35.344,33.533,E09_month_bus_only,month,"model_price,margin_domestic,margin_with_imports,hour,dayofweek,bus",{},43
+lgbm,16.896,0.825,1.76,34.113,29.635,E10_E05_seed1,month,"model_price,margin_domestic,margin_with_imports,hour,dayofweek,vres_share,curtailment_share,firm_utilisation,net_import_share,storage_share",{'random_state': 1},47
+lgbm,17.015,0.824,1.651,34.038,30.209,E11_E05_seed2,month,"model_price,margin_domestic,margin_with_imports,hour,dayofweek,vres_share,curtailment_share,firm_utilisation,net_import_share,storage_share",{'random_state': 2},44
+lgbm,17.115,0.834,1.232,34.586,29.927,E12_E05_bus,month,"model_price,margin_domestic,margin_with_imports,hour,dayofweek,vres_share,curtailment_share,firm_utilisation,net_import_share,storage_share,bus",{},45
+lgbm,17.681,0.814,2.117,33.492,29.928,E13_E05_small,month,"model_price,margin_domestic,margin_with_imports,hour,dayofweek,vres_share,curtailment_share,firm_utilisation,net_import_share,storage_share","{'num_leaves': 15, 'min_child_samples': 500, 'n_estimators': 300}",24
+lgbm,16.662,0.825,1.636,34.628,27.832,E14_E05_large,month,"model_price,margin_domestic,margin_with_imports,hour,dayofweek,vres_share,curtailment_share,firm_utilisation,net_import_share,storage_share","{'num_leaves': 63, 'min_child_samples': 50, 'n_estimators': 800, 'learning_rate': 0.03}",122
+lgbm,17.159,0.825,1.392,32.959,29.383,E15_E05_huber,month,"model_price,margin_domestic,margin_with_imports,hour,dayofweek,vres_share,curtailment_share,firm_utilisation,net_import_share,storage_share","{'objective': 'huber', 'alpha': 20.0}",34
+lgbm,17.421,0.824,1.089,32.398,28.44,E16_E05_l2,month,"model_price,margin_domestic,margin_with_imports,hour,dayofweek,vres_share,curtailment_share,firm_utilisation,net_import_share,storage_share",{'objective': 'l2'},33
+lgbm,16.801,0.823,1.548,33.692,29.746,E17_E14_no_margins,month,"model_price,hour,dayofweek,vres_share,curtailment_share,firm_utilisation,net_import_share,storage_share","{'num_leaves': 63, 'min_child_samples': 50, 'n_estimators': 800, 'learning_rate': 0.03}",121
+lgbm,20.032,0.765,2.136,41.182,34.708,E18_price_margins_only,month,"model_price,margin_domestic,margin_with_imports","{'num_leaves': 63, 'min_child_samples': 50, 'n_estimators': 800, 'learning_rate': 0.03}",114

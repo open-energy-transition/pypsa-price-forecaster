@@ -6,7 +6,12 @@ import capacity are summed per market zone and every bus gets the values of its
 zone. Buses joined by branches of infinite capacity (the copperplate links of
 PyPSA-Eur ``clustering: copperplate_regions``) form one zone, every other bus is
 its own zone. Import capacity counts the hourly capacity of all finite branches
-into the zone from other zones.
+into the zone from other zones, net import their solved flow.
+
+Dispatch columns are the solved output, so available minus dispatched variable
+renewables is their curtailment. The reference costs are the median hourly
+marginal cost over all generators of a carrier in the network, the same for
+every bus, and track the fuel and carbon prices.
 """
 
 import numpy as np
@@ -26,6 +31,7 @@ VRES_CARRIERS = [
     "solar-hsat",
 ]
 LOAD_SHEDDING_CARRIER = "load"
+REFERENCE_COSTS = {"cost_gas": "CCGT", "cost_coal": "coal"}
 
 COLUMNS = [
     "snapshot",
@@ -37,6 +43,12 @@ COLUMNS = [
     "supply_vres",
     "supply_storage",
     "import_capacity",
+    "dispatch_firm",
+    "dispatch_vres",
+    "storage_dispatch",
+    "net_import",
+    "cost_gas",
+    "cost_coal",
 ]
 
 
@@ -105,6 +117,33 @@ def import_capacity(n: pypsa.Network, zone: pd.Series) -> pd.DataFrame:
     return total
 
 
+def net_import(n: pypsa.Network, zone: pd.Series) -> pd.DataFrame:
+    """Return the hourly solved flow of branches into each zone from other zones, net of exports."""
+    total = pd.DataFrame(0.0, index=n.snapshots, columns=zone.unique())
+    for static, dynamic in [(n.lines, n.lines_t), (n.links, n.links_t)]:
+        branches = between_zones(static, zone)
+        for end in ["0", "1"]:
+            flow = dynamic[f"p{end}"].reindex(
+                index=n.snapshots, columns=branches.index, fill_value=0.0
+            )
+            total -= zonal_sum(flow, branches[f"bus{end}"], zone)
+    return total
+
+
+def dispatch(p: pd.DataFrame, n: pypsa.Network, index: pd.Index) -> pd.DataFrame:
+    """Return the solved hourly output `p` of the components in `index`, zero if not solved."""
+    return p.reindex(index=n.snapshots, columns=index, fill_value=0.0)
+
+
+def reference_costs(n: pypsa.Network) -> dict[str, pd.Series]:
+    """Return the median hourly marginal cost per carrier of ``REFERENCE_COSTS``."""
+    costs = n.get_switchable_as_dense("Generator", "marginal_cost")
+    return {
+        name: costs.loc[:, (n.generators.carrier == carrier).to_numpy()].median(axis=1)
+        for name, carrier in REFERENCE_COSTS.items()
+    }
+
+
 def zonal_quantities(n: pypsa.Network, zone: pd.Series) -> dict[str, pd.DataFrame]:
     """Return the hourly load, available supply by type and import capacity per zone in MW."""
     generators = n.generators[n.generators.carrier != LOAD_SHEDDING_CARRIER]
@@ -123,6 +162,22 @@ def zonal_quantities(n: pypsa.Network, zone: pd.Series) -> dict[str, pd.DataFram
         "supply_vres": zonal_sum(available.loc[:, vres], generators.bus[vres], zone),
         "supply_storage": zonal_sum(storage, n.storage_units.bus, zone),
         "import_capacity": import_capacity(n, zone),
+        "dispatch_firm": zonal_sum(
+            dispatch(n.generators_t.p, n, generators.index[~vres]),
+            generators.bus[~vres],
+            zone,
+        ),
+        "dispatch_vres": zonal_sum(
+            dispatch(n.generators_t.p, n, generators.index[vres]),
+            generators.bus[vres],
+            zone,
+        ),
+        "storage_dispatch": zonal_sum(
+            dispatch(n.storage_units_t.p, n, n.storage_units.index),
+            n.storage_units.bus,
+            zone,
+        ),
+        "net_import": net_import(n, zone),
     }
 
 
@@ -159,4 +214,6 @@ def extract(n: pypsa.Network) -> pd.DataFrame:
         table = table.merge(
             to_long(values, "zone", name), on=["snapshot", "zone"], how="left"
         )
+    for name, cost in reference_costs(n).items():
+        table[name] = table.snapshot.map(cost)
     return table[COLUMNS]

@@ -84,9 +84,25 @@ class Residual(Forecaster):
         )
 
 
-def make_model(name: str, features: list[str] | None = None) -> Forecaster:
-    """Return the unfitted model `name` using `features` (``DEFAULT_FEATURES`` if None)."""
-    features = DEFAULT_FEATURES if features is None else features
+def make_model(
+    name: str, features: list[str] | None = None, params: dict | None = None
+) -> Forecaster:
+    """
+    Return the unfitted model `name` using `features` (``DEFAULT_FEATURES`` if None).
+
+    `params` override the parameters of the estimator of a learned model, e.g.
+    ``{"num_leaves": 15}`` for ``lgbm``.
+    """
+    model = base_model(name, DEFAULT_FEATURES if features is None else features)
+    if params:
+        if not isinstance(model, Residual):
+            raise ValueError(f"Model {name} has no parameters")
+        model.estimator.set_params(**params)
+    return model
+
+
+def base_model(name: str, features: list[str]) -> Forecaster:
+    """Return the unfitted model `name` with its default parameters."""
     if name == "pypsa":
         return Forecaster()
     if name == "bus_bias":
@@ -104,10 +120,10 @@ def make_model(name: str, features: list[str] | None = None) -> Forecaster:
         return Residual(
             LGBMRegressor(
                 objective="l1",
-                n_estimators=400,
-                learning_rate=0.05,
-                num_leaves=31,
-                min_child_samples=100,
+                n_estimators=800,
+                learning_rate=0.03,
+                num_leaves=63,
+                min_child_samples=50,
                 subsample=0.8,
                 subsample_freq=1,
                 colsample_bytree=0.9,

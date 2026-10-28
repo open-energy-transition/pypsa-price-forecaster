@@ -50,8 +50,15 @@ pixi run ppf predict path/to/solved_2030.nc -m models/lgbm.joblib -o results/pri
 | `model_price` | marginal price of the bus |
 | `margin_domestic` | (available supply − load) / load |
 | `margin_with_imports` | (available supply + import capacity − load) / load |
-| `margin_domestic_mw`, `margin_with_imports_mw` | the same in MW (not used by default) |
-| `hour`, `dayofweek`, `month` | UTC calendar |
+| `vres_share` | available wind, solar and run of river / load |
+| `curtailment_share` | (available − dispatched variable renewables) / load |
+| `firm_utilisation` | dispatched / available other generators |
+| `net_import_share` | solved net import / load |
+| `storage_share` | storage unit dispatch / load |
+| `hour`, `dayofweek` | UTC calendar |
+
+These are the defaults, chosen in [experiments/NOTES.md](experiments/NOTES.md).
+Also available, but not used by default: `month`, `bus`, `cost_gas`, `cost_coal`, `price_to_gas`, `price_daily_mean`, `price_deviation`, and the margins in MW.
 
 Available supply is `p_nom × p_max_pu` of generators (without load shedding) and storage units.
 Import capacity is the hourly capacity of the NTC links into the zone.
@@ -70,7 +77,10 @@ To add a feature, add an entry to `FEATURES` in `dataset.py`, plus a column in `
 ## Evaluation splits
 
 - `--split year`: train on the other years. This is the real test, and it becomes meaningful once 3 or more years are available.
-- `--split week --folds K`: every K-th week of all years is one fold. It works with a single year, but scores optimistically because neighbouring weeks are in training.
+- `--split month`: leave one calendar month out. This is the most honest test within a single year.
+- `--split week --folds K`: every K-th week of all years is one fold. It scores optimistically, because neighbouring weeks are in training.
+
+Experiments and their results are logged in [experiments/](experiments/).
 
 ## License
 

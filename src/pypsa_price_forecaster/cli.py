@@ -1,0 +1,144 @@
+"""
+Command line interface: extract tables from solved networks, evaluate, train and predict.
+"""
+
+import logging
+from pathlib import Path
+from typing import Annotated
+
+import pandas as pd
+import typer
+
+from pypsa_price_forecaster import models as model_io
+from pypsa_price_forecaster.dataset import (
+    DEFAULT_FEATURES,
+    FEATURES,
+    TARGET,
+    build_table,
+    read_tables,
+)
+from pypsa_price_forecaster.evaluate import bus_metrics, leave_one_year_out, summary
+from pypsa_price_forecaster.models import DEFAULT_MODELS
+
+app = typer.Typer(
+    help="Convert PyPSA marginal prices to day-ahead electricity prices.",
+    no_args_is_help=True,
+)
+
+Tables = Annotated[
+    list[Path], typer.Argument(help="Tables written by `extract`, one per run.")
+]
+Features = Annotated[
+    list[str] | None,
+    typer.Option(
+        "--feature",
+        "-f",
+        help=f"Feature to use, repeatable. Default: {', '.join(DEFAULT_FEATURES)}. "
+        f"Available: {', '.join(FEATURES)}.",
+    ),
+]
+
+
+@app.callback()
+def main(
+    verbose: Annotated[bool, typer.Option("--verbose", "-v")] = False,
+) -> None:
+    logging.basicConfig(
+        level=logging.INFO if verbose else logging.WARNING,
+        format="%(levelname)s %(name)s: %(message)s",
+    )
+
+
+@app.command()
+def extract(
+    network: Annotated[Path, typer.Argument(help="Solved PyPSA network (.nc).")],
+    out: Annotated[Path, typer.Option("--out", "-o", help="Output table (.parquet).")],
+    prices: Annotated[
+        Path | None,
+        typer.Option(
+            help="Observed prices, wide CSV of naive UTC hours by bus "
+            "(resources/day_ahead_prices.csv of pypsa-eur-backcast)."
+        ),
+    ] = None,
+    run: Annotated[
+        str | None, typer.Option(help="Run name, default: network file name.")
+    ] = None,
+) -> None:
+    """Extract the hourly model price, load, supply and import capacity per bus."""
+    table = build_table(network, prices, run)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    table.to_parquet(out, index=False)
+    typer.echo(
+        f"Wrote {len(table)} rows of run {table.run.iat[0]} ({table.year.iat[0]}, "
+        f"{table.bus.nunique()} buses) to {out}"
+    )
+
+
+@app.command()
+def evaluate(
+    tables: Tables,
+    out_dir: Annotated[Path, typer.Option("--out-dir", "-o")],
+    model: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--model",
+            "-m",
+            help=f"Model, repeatable. Default: {', '.join(DEFAULT_MODELS)}.",
+        ),
+    ] = None,
+    feature: Features = None,
+) -> None:
+    """Predict every year with models fitted on the other years and score against observed prices."""
+    table = read_tables(tables)
+    predictions = leave_one_year_out(table, model or DEFAULT_MODELS, feature)
+    metrics = bus_metrics(table, predictions)
+    scores = summary(metrics)
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    table[["run", "year", "snapshot", "bus", TARGET]].join(predictions).to_parquet(
+        out_dir / "predictions.parquet", index=False
+    )
+    metrics.to_csv(out_dir / "bus_metrics.csv")
+    scores.to_csv(out_dir / "summary.csv")
+    typer.echo("Median over buses, out of sample:")
+    typer.echo(scores.round(3).to_string())
+
+
+@app.command()
+def train(
+    tables: Tables,
+    out: Annotated[Path, typer.Option("--out", "-o", help="Output model (.joblib).")],
+    model: Annotated[str, typer.Option("--model", "-m")] = "lgbm",
+    feature: Features = None,
+) -> None:
+    """Fit a model on all rows with observed price."""
+    fitted = model_io.make_model(model, feature).fit(read_tables(tables))
+    model_io.save(fitted, out)
+    typer.echo(f"Wrote {model} fitted on {', '.join(fitted.trained_on)} to {out}")
+
+
+@app.command()
+def predict(
+    source: Annotated[
+        Path, typer.Argument(help="Solved PyPSA network (.nc) or table (.parquet).")
+    ],
+    model: Annotated[Path, typer.Option("--model", "-m", help="Model from `train`.")],
+    out: Annotated[
+        Path, typer.Option("--out", "-o", help="Output CSV of naive UTC hours by bus.")
+    ],
+) -> None:
+    """Predict hourly day-ahead prices per bus of a solved network."""
+    table = (
+        pd.read_parquet(source) if source.suffix == ".parquet" else build_table(source)
+    )
+    fitted = model_io.load(model)
+    prices = (
+        table.assign(price=fitted.predict(table))
+        .pivot(index="snapshot", columns="bus", values="price")
+        .rename_axis(index="snapshot", columns=None)
+    )
+    out.parent.mkdir(parents=True, exist_ok=True)
+    prices.to_csv(out)
+    typer.echo(
+        f"Wrote prices of {prices.shape[1]} buses and {len(prices)} hours to {out}"
+    )

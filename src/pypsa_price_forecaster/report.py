@@ -30,7 +30,12 @@ from lightgbm import LGBMRegressor
 
 from pypsa_price_forecaster import __version__
 from pypsa_price_forecaster.dataset import DEFAULT_FEATURES, FEATURES, TARGET
-from pypsa_price_forecaster.evaluate import bus_metrics, cross_validate, scores
+from pypsa_price_forecaster.evaluate import (
+    bus_metrics,
+    cross_validate,
+    fold_labels,
+    scores,
+)
 from pypsa_price_forecaster.models import DEFAULT_MODELS, labelled, make_model
 
 logger = logging.getLogger(__name__)
@@ -66,10 +71,11 @@ def git_commit() -> tuple[str, bool]:
 
 
 def lgbm_params() -> dict:
-    """Return the parameters of the default ``lgbm`` that differ from those of LightGBM."""
-    params = make_model("lgbm").estimator.get_params()
+    """Return the parameters of the default ``lgbm`` that differ from those of LightGBM, and its shrink."""
+    model = make_model("lgbm")
     defaults = LGBMRegressor().get_params()
-    return {k: v for k, v in params.items() if v != defaults.get(k)}
+    params = model.estimator.get_params().items()
+    return {k: v for k, v in params if v != defaults.get(k)} | {"shrink": model.shrink}
 
 
 def by_year(table: pd.DataFrame, predictions: pd.DataFrame) -> pd.DataFrame:
@@ -211,7 +217,7 @@ def write_report(
         "runs": sorted(table.run.unique()),
         "years": sorted(int(y) for y in table.year.unique()),
         "split": split,
-        "folds": int(table.snapshot.dt.month.nunique()) if split == "month" else folds,
+        "folds": int(fold_labels(table, split, folds).nunique()),
         "buses": int(table.bus.nunique()),
         "hours": len(table),
         "features": features,

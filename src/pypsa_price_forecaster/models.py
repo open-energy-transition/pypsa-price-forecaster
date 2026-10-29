@@ -23,8 +23,12 @@ from sklearn.preprocessing import StandardScaler
 from pypsa_price_forecaster.dataset import DEFAULT_FEATURES, TARGET, feature_matrix
 
 DEFAULT_MODELS = ["pypsa", "bus_bias", "linear", "lgbm"]
-# lgbm_gas learns the error relative to the marginal cost of gas plants
-MODELS = [*DEFAULT_MODELS, "lgbm_gas"]
+# lgbm_gas learns the error relative to the marginal cost of gas plants,
+# lgbm_gas_clip clips that cost to its range in training when predicting,
+# lgbm_full applies the whole correction instead of the SHRINK share of lgbm
+MODELS = [*DEFAULT_MODELS, "lgbm_full", "lgbm_gas", "lgbm_gas_clip"]
+# share of the correction applied by lgbm, chosen on held-out years (experiments/NOTES.md)
+SHRINK = 0.7
 
 
 def labelled(table: pd.DataFrame) -> pd.DataFrame:
@@ -74,22 +78,39 @@ class Residual(Forecaster):
     With a `scale` column, the estimator learns the error divided by that
     column, e.g. the marginal cost of gas plants, and the correction is
     multiplied back, so it carries over to years with other fuel prices.
+    With `clip`, the scale of predicted rows is clipped to its range in
+    training, so the correction does not grow beyond what was learnt.
+    `shrink` is the share of the learnt correction that is applied: below 1
+    it hedges against corrections that do not carry over to an unseen year.
     """
 
     def __init__(
-        self, estimator, features: list[str], scale: str | None = None
+        self,
+        estimator,
+        features: list[str],
+        scale: str | None = None,
+        clip: bool = False,
+        shrink: float = 1.0,
     ) -> None:
         self.estimator = estimator
         self.features = list(features)
         self.scale = scale
+        self.clip = clip
+        self.shrink = shrink
 
     def _scale(self, table: pd.DataFrame) -> pd.Series | float:
-        return 1.0 if self.scale is None else table[self.scale]
+        if self.scale is None:
+            return 1.0
+        if self.clip and hasattr(self, "scale_range"):
+            return table[self.scale].clip(*self.scale_range)
+        return table[self.scale]
 
     def _fit(self, rows: pd.DataFrame) -> None:
-        scale = self._scale(rows)
-        if self.scale is not None and not (scale > 0).all():
-            raise ValueError(f"Scale {self.scale} must be positive in every row")
+        scale = 1.0 if self.scale is None else rows[self.scale]
+        if self.scale is not None:
+            if not (scale > 0).all():
+                raise ValueError(f"Scale {self.scale} must be positive in every row")
+            self.scale_range = (scale.min(), scale.max())
         self.estimator.fit(
             feature_matrix(rows, self.features),
             (rows[TARGET] - rows.model_price) / scale,
@@ -97,7 +118,9 @@ class Residual(Forecaster):
 
     def correction(self, table: pd.DataFrame) -> pd.Series:
         predicted = self.estimator.predict(feature_matrix(table, self.features))
-        return pd.Series(predicted, index=table.index) * self._scale(table)
+        return (
+            self.shrink * pd.Series(predicted, index=table.index) * self._scale(table)
+        )
 
 
 def make_model(
@@ -132,7 +155,7 @@ def base_model(name: str, features: list[str]) -> Forecaster:
             ),
             features,
         )
-    if name in ("lgbm", "lgbm_gas"):
+    if name in ("lgbm", "lgbm_full", "lgbm_gas", "lgbm_gas_clip"):
         return Residual(
             LGBMRegressor(
                 objective="l1",
@@ -147,7 +170,9 @@ def base_model(name: str, features: list[str]) -> Forecaster:
                 verbose=-1,
             ),
             features,
-            scale="cost_gas" if name == "lgbm_gas" else None,
+            scale="cost_gas" if name.startswith("lgbm_gas") else None,
+            clip=name == "lgbm_gas_clip",
+            shrink=SHRINK if name == "lgbm" else 1.0,
         )
     raise ValueError(f"Unknown model {name}, available: {MODELS}")
 

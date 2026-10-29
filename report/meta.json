@@ -1,6 +1,6 @@
 {
-  "created": "2026-10-29T10:13:01+00:00",
-  "commit": "e0e2a12",
+  "created": "2026-10-29T12:18:11+00:00",
+  "commit": "f1a49dc",
   "dirty": true,
   "version": "0.1.0",
   "runs": [
@@ -20,7 +20,7 @@
     2024
   ],
   "split": "year",
-  "folds": 4,
+  "folds": 6,
   "buses": 43,
   "hours": 2180990,
   "features": [
@@ -45,11 +45,12 @@
     "random_state": 0,
     "subsample": 0.8,
     "subsample_freq": 1,
-    "verbose": -1
+    "verbose": -1,
+    "shrink": 0.7
   },
   "seed_mae": [
-    19.3033,
-    19.4469,
-    19.3622
+    19.4051,
+    19.5051,
+    19.5644
   ]
 }

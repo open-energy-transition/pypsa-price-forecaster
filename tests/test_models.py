@@ -105,3 +105,11 @@ def test_gas_scaled_correction_scales_with_the_gas_cost(table, small_lgbm):
     doubled = table.assign(cost_gas=2 * table.cost_gas)
     correction = model.predict(table) - table.model_price
     assert np.allclose(model.predict(doubled) - table.model_price, 2 * correction)
+
+
+def test_clipped_gas_correction_stops_at_the_training_range(table, small_lgbm):
+    model = make_model("lgbm_gas_clip", ["model_price", "margin_with_imports"])
+    model.fit(table)
+    doubled = table.assign(cost_gas=2 * table.cost_gas)
+    correction = model.predict(table) - table.model_price
+    assert np.allclose(model.predict(doubled) - table.model_price, correction)

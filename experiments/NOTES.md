@@ -165,3 +165,42 @@ Round 3 follows the top of [ROADMAP.md](ROADMAP.md):
 - the target scaled by the gas plant cost (`lgbm_gas`);
 - scale-free features without `model_price`, with and without bus identity;
 - the mixed week split for comparison.
+
+## Round 3: roadmap items on six years (2026-10-29)
+
+Each row is a mean / worst skill over held-out years (1 − MAE / raw MAE).
+`year` trains on the other five years, `forward` on the earlier years only.
+
+| id | change | year: mean / worst | forward: mean / worst |
+|---|---|---|---|
+| E19/E20 | default (whole correction) | 0.101 / −0.021 | 0.074 / −0.104 |
+| E29/E30 | local hour, day of week, holidays | 0.101 / −0.035 | 0.071 / −0.108 |
+| E31/E32 | error relative to the gas plant cost (`lgbm_gas`) | 0.114 / 0.002 | −0.031 / −0.722 |
+| E33/E34 | the same with local time | 0.117 / −0.004 | −0.028 / −0.695 |
+| E40/E41 | `lgbm_gas` with the gas cost clipped to the training range | 0.109 / 0.002 | 0.067 / −0.175 |
+| E36/E37 | without `model_price`, with `price_to_gas` | 0.058 / −0.060 | 0.038 / −0.108 |
+| E38/E39 | the same plus bus identity | 0.065 / −0.025 | 0.066 / −0.078 |
+| **E42/E43** | **70 % of the correction (`lgbm` now)** | **0.133 / 0.042** | **0.092 / −0.074** |
+| E35 | week split, 5 folds, all years mixed | 0.286 / 0.178 | |
+
+- **Applying 70 % of the correction is the largest and simplest gain.** It is better than raw PyPSA in every held-out year of the year split, and better than the whole correction on both splits.
+  The share was chosen from the out-of-sample predictions of the report.
+  Chosen on the other five years only, it lands between 0.5 and 0.8 for every held-out year, and gives a mean skill of 0.111 with a worst of +0.025.
+  The whole correction overshoots in years unlike those in training: 2019 skill 0.01 at 100 %, 0.10 at 70 %; 2023 −0.02 at 100 %, +0.04 at 70 %.
+- **Local time and holidays change nothing.** UTC hour and day of week already capture the daily shape.
+- **The gas-scaled target is robust on the year split but fails going forward.** In 2021, trained on 2019 and 2020 only, the relative error learnt at low gas costs is multiplied by crisis gas costs.
+  Clipping the gas cost to the training range limits the damage (2021: −0.72 → −0.18), but stays worse than the default. Not worth the extra concept.
+- **Dropping `model_price` hurts mean skill (0.058),** although the ablation showed a lower median MAE without it.
+  The median over zone-years and the mean skill over years can disagree. Use mean and worst skill to decide.
+- **The mixed week split scores almost three times the year split (0.286 vs 0.101).** Within-year or mixed splits must not be used to choose models.
+
+### Defaults changed
+
+`lgbm` applies 70 % of its correction (`SHRINK` in `models.py`). `lgbm_full` keeps the whole correction.
+Experiments E01–E41 used the whole correction: rerun them with `lgbm_full` to reproduce.
+
+### Next
+
+- Price-setting technology and congestion features (roadmap 5).
+- Seed bagging and sample weights per zone-year, both simple.
+- Tails: quantile or L2 models for the spike hours, which still carry the largest errors.

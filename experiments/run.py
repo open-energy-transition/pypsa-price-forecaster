@@ -171,6 +171,20 @@ EXPERIMENTS |= {
     "E39_forward_scalefree_bus": dict(
         split="forward", features=SCALE_FREE + ["bus"], models=LGBM
     ),
+    # gas-scaled target with the gas cost clipped to the training range (E32 overshot 2021)
+    "E40_year_gas_clip": dict(
+        split="year", features=DEFAULT_FEATURES, models=["pypsa", "lgbm_gas_clip"]
+    ),
+    "E41_forward_gas_clip": dict(
+        split="forward", features=DEFAULT_FEATURES, models=["pypsa", "lgbm_gas_clip"]
+    ),
+    # 70 % of the lgbm correction, the share chosen on the other years in 0.5 to 0.8
+    "E42_year_shrink": dict(
+        split="year", features=DEFAULT_FEATURES, models=["pypsa", "lgbm"]
+    ),
+    "E43_forward_shrink": dict(
+        split="forward", features=DEFAULT_FEATURES, models=["pypsa", "lgbm"]
+    ),
     # every 5th week of all years held out, as a mixed split to compare with the year split
     "E35_week5_default": dict(
         split="week", folds=5, features=DEFAULT_FEATURES, models=LGBM

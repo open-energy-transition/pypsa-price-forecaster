@@ -70,7 +70,11 @@ All features come from the network alone, so the model also works for future run
 | `pypsa` | raw marginal price (baseline) |
 | `bus_bias` | marginal price + median error per bus (baseline) |
 | `linear` | marginal price + Huber regression on features |
-| `lgbm` | marginal price + LightGBM (absolute error) on features |
+| `lgbm` | marginal price + 70 % of a LightGBM (absolute error) correction on features |
+| `lgbm_full` | marginal price + the whole LightGBM correction |
+| `lgbm_gas` | as `lgbm_full`, with the error learnt relative to the gas plant cost |
+
+Applying 70 % of the correction hedges against corrections that do not carry over to an unseen year: it beats raw PyPSA in every held-out year, while the whole correction is worse in 2023 ([experiments/NOTES.md](experiments/NOTES.md)).
 
 To add a feature, add an entry to `FEATURES` in `dataset.py`, plus a column in `network.py` if it needs new data from the network.
 

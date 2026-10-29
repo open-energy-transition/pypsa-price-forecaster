@@ -1,7 +1,7 @@
 # pypsa-price-forecaster
 
 > [!WARNING]
-> Work in progress. Interfaces may change.
+> Work in progress. Interfaces may change. Picking this up fresh? Read [HANDOVER.md](HANDOVER.md) first.
 
 Corrects the marginal prices of a solved PyPSA network (e.g. from [pypsa-eur-backcast](https://github.com/open-energy-transition/pypsa-eur-backcast)) to day-ahead prices.
 A model learns the gap between observed and model price from hourly features of the network.

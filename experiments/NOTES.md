@@ -244,3 +244,48 @@ All rows apply 70 % of the correction. Values are mean / worst skill per held-ou
 ### Defaults changed
 
 `DEFAULT_FEATURES` adds `price_setter`, `imports_congested` and `exports_congested`. The linear baseline one-hot encodes categorical features.
+
+## Diagnostic: is the tail a feature problem or a backcast problem? (2026-10-29)
+
+Checked directly, no training needed: in the worst-error hours of hard years, does the
+*solved network itself* show any sign of scarcity that a feature could expose, or does
+it look comfortable while the market was not?
+
+| year/zone | model price max (whole year) | worst 100–200 hours: model mean | observed mean | margin_domestic | price_setter |
+|---|---|---|---|---|---|
+| 2022 DE00 | 306 | 195 | 661 | 1.39 (comfortable) | 100% coal |
+| 2022 FI00 | 306 | 28 | 648 | 0.72 (comfortable) | 100% nuclear |
+| 2021 DE00 | 233 | 203 | 418 | 0.99 | 100% coal |
+| 2023 DE00 | 202 | 124 | 213 | 1.04 | 84% lignite |
+
+**In the worst hours of the crisis years, the model's own state shows no scarcity
+signal at all** — domestic margin is comfortable (>0.7, often >1), thermal plants are
+far from their limit, and a cheap technology (coal, lignite, even nuclear in Finland)
+sets the price. There is nothing in the solved network for any feature to find. The
+gap is a wrong *input* to the backcast (fuel/merit-order assumptions for 2022
+specifically), not a gap in what the correction model can see. This matches what two
+sibling backcast-repo branches already found independently: `entsoe-unavailability`
+(spare fossil capacity means outage data changes nothing) and `daily-gas-prices`
+("2022 baseline is broken (gas underdispatch)"). 2023 shows the same pattern but much
+smaller (124 vs 213, not 195 vs 661), consistent with 2023 being a normal year where
+the correction actually helps.
+
+**Conclusion: no amount of feature engineering in this repo will close this gap for
+2022-like hours.** Effort here should go into the tail generally (quantile/weighted
+models, round 6) and the regime-change problem (`forward` split), not into trying to
+patch the crisis year specifically.
+
+## Round 6: models aimed at the tail (2026-10-29)
+
+All three apply the whole correction (no shrink). Mean / worst skill per held-out year, and pooled MAE in the top 5 % hours (raw PyPSA: 187 year split, 206 forward split).
+
+| id | model | year | forward | top-5 % MAE, year / forward |
+|---|---|---|---|---|
+| E54/E55 | `lgbm` (default, 70 % shrink) | 0.157 / 0.084 | 0.104 / −0.069 | 174 / – |
+| E56/E57 | `lgbm_spike_weighted`: rows weighted by the size of their correction | −0.200 / −0.511 | −0.102 / −0.348 | 148 / 170 |
+| E58/E59 | `lgbm_asinh`: fitted on asinh of the correction | 0.113 / 0.029 | 0.095 / −0.043 | 172 / 186 |
+| E60/E61 | `lgbm_q90`: 90th percentile of the correction | −0.454 / −1.144 | −0.345 / −1.069 | 129 / 134 |
+
+- **Every point model that gets closer to spikes pays for it in normal hours.** Spike weighting cuts the top-5 % error by a fifth but raises the MAE of 2023 from 21 to 30. The 90th percentile is, as expected, not a point forecast.
+- **asinh is a weaker version of the shrink**: it compresses large corrections, but less well than applying 70 % of the correction.
+- **None replaces the default.** The tail is better served by bands around the point price (round 7) than by bending the point price towards spikes.

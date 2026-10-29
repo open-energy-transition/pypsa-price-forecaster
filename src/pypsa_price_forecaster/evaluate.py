@@ -30,7 +30,7 @@ import numpy as np
 import pandas as pd
 
 from pypsa_price_forecaster.dataset import TARGET
-from pypsa_price_forecaster.models import make_model
+from pypsa_price_forecaster.models import QUANTILES, Banded, make_model
 
 logger = logging.getLogger(__name__)
 
@@ -170,3 +170,78 @@ def scores(table: pd.DataFrame, predictions: pd.DataFrame) -> pd.DataFrame:
     result["std_ratio"] = [rows[m].std() / rows[TARGET].std() for m in result.index]
     result["share_le_0"] = [(rows[m] <= 0).mean() for m in result.index]
     return result
+
+
+def cross_validate_bands(
+    table: pd.DataFrame,
+    base: str = "lgbm",
+    features: list[str] | None = None,
+    split: str = "year",
+    params: dict | None = None,
+) -> pd.DataFrame:
+    """
+    Return the out-of-sample point price (``point``) and price quantiles (one column per `QUANTILES`) of every row.
+
+    Uses :class:`Banded` models over the ``year`` or ``forward`` split. Folds
+    with fewer than two training years have no prediction.
+    """
+    if split not in ("year", "forward"):
+        raise ValueError(f"Bands need the year or forward split, got {split}")
+    labels = fold_labels(table, split)
+    result = pd.DataFrame(np.nan, index=table.index, columns=["point", *QUANTILES])
+    for label in sorted(labels.unique()):
+        test = labels == label
+        train = labels < label if split == "forward" else ~test
+        if table.year[train].nunique() < 2:
+            logger.info(
+                f"Skipping {split} fold {label}, bands need two training years."
+            )
+            continue
+        logger.info(f"Predicting bands of {split} fold {label} with {base}.")
+        model = Banded(base, features, params).fit(table[train])
+        result.loc[test, "point"] = model.predict(table[test])
+        result.loc[test, QUANTILES] = model.quantiles(table[test]).to_numpy()
+    return result
+
+
+def pinball(observed: pd.Series, quantiles: pd.DataFrame) -> pd.Series:
+    """Mean pinball loss over the columns of `quantiles`, named by their level, of every row."""
+    levels = np.array(quantiles.columns, dtype=float)
+    diff = observed.to_numpy()[:, None] - quantiles.to_numpy()
+    loss = np.maximum(levels * diff, (levels - 1) * diff).mean(axis=1)
+    return pd.Series(loss, index=observed.index)
+
+
+def band_scores(
+    table: pd.DataFrame, bands: pd.DataFrame, threshold: float = 150.0
+) -> pd.DataFrame:
+    """
+    Return the scores of the price bands of :func:`cross_validate_bands` per year, as median over buses.
+
+    - ``coverage_80``, ``below_10``, ``above_90``: share of hours inside the
+      10-90 % band, below and above it (0.8, 0.1 and 0.1 if calibrated)
+    - ``width_80``: mean width of the 10-90 % band
+    - ``pinball``, ``pinball_point``: mean pinball loss over `QUANTILES` of the
+      bands and of the point price used as every quantile
+    - ``brier``, ``brier_point``: Brier score of the probability of a price
+      above `threshold`, from the share of quantiles above it, and of the point
+      price above it as a yes or no forecast
+    """
+    rows = table[["year", "bus", TARGET]].join(bands).dropna(subset=[TARGET, "point"])
+    observed, point, quantiles = rows[TARGET], rows.point, rows[QUANTILES]
+    point_as_quantiles = pd.DataFrame({q: point for q in QUANTILES}, index=rows.index)
+    event = (observed > threshold).astype(float)
+    hourly = pd.DataFrame(
+        {
+            "coverage_80": (quantiles[0.1] <= observed) & (observed <= quantiles[0.9]),
+            "below_10": observed < quantiles[0.1],
+            "above_90": observed > quantiles[0.9],
+            "width_80": quantiles[0.9] - quantiles[0.1],
+            "pinball": pinball(observed, quantiles),
+            "pinball_point": pinball(observed, point_as_quantiles),
+            "brier": ((quantiles > threshold).mean(axis=1) - event) ** 2,
+            "brier_point": ((point > threshold).astype(float) - event) ** 2,
+        }
+    ).astype(float)
+    per_bus = hourly.groupby([rows.year, rows.bus]).mean()
+    return per_bus.groupby("year").median()

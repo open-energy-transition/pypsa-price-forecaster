@@ -82,6 +82,36 @@ def daily_mean_price(table: pd.DataFrame) -> pd.Series:
     return table.groupby(days).model_price.transform("mean")
 
 
+def europe_spread(table: pd.DataFrame) -> pd.Series:
+    """Model price minus the median model price over all buses of the run in the same hour."""
+    median = table.groupby([table.run, table.snapshot]).model_price.transform("median")
+    return table.model_price - median
+
+
+def weekly_vres_share(table: pd.DataFrame) -> pd.Series:
+    """Mean available renewable share of load of the bus over the past 168 hours."""
+    share = (table.supply_vres / table.load).replace([np.inf, -np.inf], np.nan)
+    ordered = (
+        table[["run", "bus", "snapshot"]]
+        .assign(share=share)
+        .sort_values("snapshot", kind="stable")
+    )
+    weekly = ordered.groupby(["run", "bus"]).share.transform(
+        lambda s: s.rolling(168, min_periods=24).mean()
+    )
+    return weekly.reindex(table.index)
+
+
+def daily_mean(table: pd.DataFrame, values: pd.Series) -> pd.Series:
+    """Mean of `values` over the UTC day of the bus of each row."""
+    days = [table.run, table.bus, table.snapshot.dt.date]
+    return values.replace([np.inf, -np.inf], np.nan).groupby(days).transform("mean")
+
+
+def gas_sets_price(table: pd.DataFrame) -> pd.Series:
+    return (table.price_setter == "gas").astype(float)
+
+
 FEATURES: dict[str, Callable[[pd.DataFrame], pd.Series]] = {
     "model_price": lambda t: t.model_price,
     "margin_domestic": lambda t: (supply(t) - t.load) / t.load,
@@ -89,6 +119,17 @@ FEATURES: dict[str, Callable[[pd.DataFrame], pd.Series]] = {
     "margin_domestic_mw": lambda t: supply(t) - t.load,
     "margin_with_imports_mw": lambda t: supply(t) + t.import_capacity - t.load,
     "vres_share": lambda t: t.supply_vres / t.load,
+    "vres_share_week": weekly_vres_share,
+    "spread_europe": europe_spread,
+    "margin_with_imports_day": lambda t: daily_mean(
+        t, (supply(t) + t.import_capacity - t.load) / t.load
+    ),
+    "vres_share_day": lambda t: daily_mean(t, t.supply_vres / t.load),
+    "firm_utilisation_day": lambda t: daily_mean(t, t.dispatch_firm / t.supply_firm),
+    "gas_setter_day": lambda t: daily_mean(t, gas_sets_price(t)),
+    "gas_setter_europe": lambda t: (
+        gas_sets_price(t).groupby([t.run, t.snapshot]).transform("mean")
+    ),
     "curtailment_share": lambda t: (t.supply_vres - t.dispatch_vres) / t.load,
     "firm_utilisation": lambda t: t.dispatch_firm / t.supply_firm,
     "net_import_share": lambda t: t.net_import / t.load,

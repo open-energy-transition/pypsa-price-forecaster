@@ -17,8 +17,13 @@ from pathlib import Path
 
 import pandas as pd
 
-from pypsa_price_forecaster.dataset import DEFAULT_FEATURES, read_tables
-from pypsa_price_forecaster.evaluate import cross_validate, scores
+from pypsa_price_forecaster.dataset import DEFAULT_FEATURES, TARGET, read_tables
+from pypsa_price_forecaster.evaluate import (
+    band_scores,
+    cross_validate,
+    cross_validate_bands,
+    scores,
+)
 
 TABLES = sorted(Path("data/tables").glob("*.parquet"))
 RESULTS = Path("experiments/results.csv")
@@ -224,8 +229,66 @@ EXPERIMENTS |= {
         split="forward", features=NETWORK, models=LGBM
     ),
 }
+# Round 6: literature-grounded attempts at the tail (HANDOVER.md, experiments/NOTES.md)
+# all unshrunk (shrink=1.0), so the shrink factor can be swept for free afterwards
+# from the stored full correction, the same trick used to pick SHRINK in round 3
+EXPERIMENTS |= {
+    "E56_year_spike_weighted": dict(
+        split="year", features=DEFAULT_FEATURES, models=["pypsa", "lgbm_spike_weighted"]
+    ),
+    "E57_forward_spike_weighted": dict(
+        split="forward",
+        features=DEFAULT_FEATURES,
+        models=["pypsa", "lgbm_spike_weighted"],
+    ),
+    "E58_year_asinh": dict(
+        split="year", features=DEFAULT_FEATURES, models=["pypsa", "lgbm_asinh"]
+    ),
+    "E59_forward_asinh": dict(
+        split="forward", features=DEFAULT_FEATURES, models=["pypsa", "lgbm_asinh"]
+    ),
+    "E60_year_q90": dict(
+        split="year", features=DEFAULT_FEATURES, models=["pypsa", "lgbm_q90"]
+    ),
+    "E61_forward_q90": dict(
+        split="forward", features=DEFAULT_FEATURES, models=["pypsa", "lgbm_q90"]
+    ),
+}
+# Round 7: the two features the data check ranked first (no re-extraction), and
+# price bands from the out-of-sample error quantiles of lgbm
+SPREAD = DEFAULT_FEATURES + ["spread_europe"]
+VRES_WEEK = DEFAULT_FEATURES + ["vres_share_week"]
+EXPERIMENTS |= {
+    "E62_year_spread": dict(split="year", features=SPREAD, models=LGBM),
+    "E63_forward_spread": dict(split="forward", features=SPREAD, models=LGBM),
+    "E64_year_vres_week": dict(split="year", features=VRES_WEEK, models=LGBM),
+    "E65_forward_vres_week": dict(split="forward", features=VRES_WEEK, models=LGBM),
+    "E66_year_bands": dict(split="year", features=DEFAULT_FEATURES, bands=True),
+    "E67_forward_bands": dict(split="forward", features=DEFAULT_FEATURES, bands=True),
+}
+# Round 8: the daily level, where an oracle check puts most of the remaining error
+DAILY = DEFAULT_FEATURES + [
+    "margin_with_imports_day",
+    "vres_share_day",
+    "firm_utilisation_day",
+    "gas_setter_day",
+]
+GAS_EUROPE = DEFAULT_FEATURES + ["gas_setter_europe"]
+EXPERIMENTS |= {
+    "E68_year_daily": dict(split="year", features=DAILY, models=LGBM),
+    "E69_forward_daily": dict(split="forward", features=DAILY, models=LGBM),
+    "E70_year_gas_europe": dict(split="year", features=GAS_EUROPE, models=LGBM),
+    "E71_forward_gas_europe": dict(split="forward", features=GAS_EUROPE, models=LGBM),
+    "E72_year_bag": dict(
+        split="year", features=DEFAULT_FEATURES, models=["pypsa", "lgbm_bag"]
+    ),
+    "E73_forward_bag": dict(
+        split="forward", features=DEFAULT_FEATURES, models=["pypsa", "lgbm_bag"]
+    ),
+}
 MODELS = ["pypsa", "bus_bias", "linear", "lgbm"]
 RESULTS_BY_YEAR = Path("experiments/results_by_year.csv")
+RESULTS_BANDS = Path("experiments/results_bands.csv")
 COLUMNS = ["mae", "r", "abs_bias", "mae_top5", "mae_low5"]
 
 
@@ -266,9 +329,38 @@ def run(name: str, table: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
     return result.assign(**labels), by_year
 
 
+def run_bands(name: str, table: pd.DataFrame) -> pd.DataFrame:
+    """Return the band scores per held-out year of experiment `name`, keeping the bands in ``results/``."""
+    spec = EXPERIMENTS[name]
+    start = time.time()
+    bands = cross_validate_bands(table, "lgbm", spec["features"], spec["split"])
+    seconds = round(time.time() - start)
+    Path("results").mkdir(exist_ok=True)
+    table[["run", "year", "snapshot", "bus", TARGET]].join(bands).dropna(
+        subset=["point"]
+    ).to_parquet(f"results/bands_{name}.parquet")
+    return (
+        band_scores(table, bands)
+        .round(3)
+        .reset_index()
+        .assign(experiment=name, split=spec["split"], seconds=seconds)
+    )
+
+
 if __name__ == "__main__":
     table = read_tables(TABLES)
     for name in sys.argv[1:]:
+        if EXPERIMENTS[name].get("bands"):
+            result = run_bands(name, table)
+            print(f"\n== {name}")
+            print(result.drop(columns="experiment").to_string(index=False))
+            skill = 1 - result.pinball / result.pinball_point
+            print("mean:", {"pinball_skill": round(skill.mean(), 3)})
+            print("worst:", {"pinball_skill": round(skill.min(), 3)})
+            result.to_csv(
+                RESULTS_BANDS, mode="a", header=not RESULTS_BANDS.exists(), index=False
+            )
+            continue
         result, by_year = run(name, table)
         print(f"\n== {name}")
         print(result.drop(columns=["experiment", "features"]).to_string(index=False))

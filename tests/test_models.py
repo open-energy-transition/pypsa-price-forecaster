@@ -4,8 +4,23 @@ import pytest
 from typer.testing import CliRunner
 
 from pypsa_price_forecaster.cli import app
-from pypsa_price_forecaster.evaluate import bus_metrics, cross_validate, summary
-from pypsa_price_forecaster.models import DEFAULT_MODELS, load, make_model, save
+from pypsa_price_forecaster.dataset import TARGET, feature_matrix
+from pypsa_price_forecaster.evaluate import (
+    band_scores,
+    bus_metrics,
+    cross_validate,
+    cross_validate_bands,
+    summary,
+)
+from pypsa_price_forecaster.models import (
+    DEFAULT_MODELS,
+    QUANTILES,
+    TRANSFORMS,
+    labelled,
+    load,
+    make_model,
+    save,
+)
 
 
 def test_learned_models_beat_raw_price_out_of_sample(table):
@@ -113,3 +128,78 @@ def test_clipped_gas_correction_stops_at_the_training_range(table, small_lgbm):
     doubled = table.assign(cost_gas=2 * table.cost_gas)
     correction = model.predict(table) - table.model_price
     assert np.allclose(model.predict(doubled) - table.model_price, correction)
+
+
+def test_transforms_round_trip():
+    x = np.array([-500.0, -1.0, 0.0, 1.0, 500.0])
+    for forward, inverse in TRANSFORMS.values():
+        assert np.allclose(inverse(forward(x)), x)
+
+
+def test_spike_weighted_correction_fits_large_errors_more_closely(table, small_lgbm):
+    features = ["model_price", "margin_with_imports"]
+    plain = make_model("lgbm_full", features).fit(table)
+    weighted = make_model("lgbm_spike_weighted", features).fit(table)
+    rows = labelled(table)
+    gap = (rows[TARGET] - rows.model_price).abs()
+    large = gap > gap.groupby(rows.bus).transform("quantile", 0.95)
+
+    def error(model):
+        return (model.predict(rows) - rows[TARGET]).abs()
+
+    assert error(weighted)[large].mean() <= error(plain)[large].mean()
+
+
+def test_asinh_correction_runs_and_compresses_large_values(table, small_lgbm):
+    model = make_model("lgbm_asinh", ["model_price", "margin_with_imports"]).fit(table)
+    predictions = model.predict(table)
+    assert predictions.notna().all() and np.isfinite(predictions).all()
+
+
+def test_quantile_correction_runs(table, small_lgbm):
+    model = make_model("lgbm_q90", ["model_price", "margin_with_imports"]).fit(table)
+    predictions = model.predict(table)
+    assert predictions.notna().all() and np.isfinite(predictions).all()
+
+
+def test_cross_bus_and_rolling_features_ignore_row_order(table):
+    features = ["spread_europe", "vres_share_week"]
+    shuffled = table.sample(frac=1, random_state=0)
+    pd.testing.assert_frame_equal(
+        feature_matrix(shuffled, features).sort_index(),
+        feature_matrix(table, features),
+    )
+    spread = feature_matrix(table, ["spread_europe"]).spread_europe
+    # the median bus of every hour has no spread
+    assert (spread.abs().groupby([table.run, table.snapshot]).min() < 1e-9).all()
+
+
+def test_bands_cover_most_hours_and_beat_the_point_price(table, small_lgbm):
+    bands = cross_validate_bands(table, features=["model_price", "margin_with_imports"])
+    assert (bands[QUANTILES].diff(axis=1).iloc[:, 1:] >= 0).all().all()
+    result = band_scores(table, bands)
+    assert set(result.index) == {2019, 2021, 2023}
+    assert (result.coverage_80 > 0.6).all()
+    assert (result.pinball < result.pinball_point).all()
+
+
+def test_forward_bands_need_two_training_years(table, small_lgbm):
+    bands = cross_validate_bands(
+        table, features=["model_price", "margin_with_imports"], split="forward"
+    )
+    assert bands[table.year < 2023].isna().all().all()
+    assert bands[table.year == 2023].notna().all().all()
+
+
+def test_daily_features_are_constant_within_a_day(table):
+    daily = ["margin_with_imports_day", "vres_share_day", "gas_setter_day"]
+    values = feature_matrix(table, daily)
+    days = [table.run, table.bus, table.snapshot.dt.date]
+    assert (values.groupby(days).nunique() <= 1).all().all()
+
+
+def test_seed_bag_averages_several_fits(table, small_lgbm):
+    features = ["model_price", "margin_with_imports"]
+    model = make_model("lgbm_bag", features, {"n_estimators": 50}).fit(table)
+    assert len(model.estimator.estimators_) == 5
+    assert np.isfinite(model.predict(table)).all()

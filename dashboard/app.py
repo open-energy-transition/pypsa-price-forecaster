@@ -9,7 +9,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import streamlit as st
 
-from dashboard.views import cached_report, experiments, features, overview, zones
+from dashboard.views import (
+    cached_report,
+    experiments,
+    features,
+    overview,
+    prices,
+    zones,
+)
 
 st.set_page_config(page_title="PyPSA price forecaster", layout="wide")
 if cached_report() is None:
@@ -18,6 +25,7 @@ if cached_report() is None:
 page = st.navigation(
     [
         st.Page(overview, title="Does it help?", default=True),
+        st.Page(prices, title="Prices: raw vs corrected", url_path="prices"),
         st.Page(features, title="Feature impact", url_path="features"),
         st.Page(zones, title="Zones and months", url_path="zones"),
         st.Page(experiments, title="Experiment log", url_path="experiments"),

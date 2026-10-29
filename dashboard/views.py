@@ -4,6 +4,7 @@ Pages of the dashboard, one function per page.
 
 import re
 
+import numpy as np
 import pandas as pd
 import streamlit as st
 
@@ -21,6 +22,8 @@ from dashboard.data import (
     read_report,
 )
 
+MODELS = ["pypsa", "lgbm"]
+PRICES = ["observed_price", *MODELS]
 SCORE_COLUMNS = {
     "mae": "MAE",
     "r": "r",
@@ -235,6 +238,137 @@ def zones() -> None:
     st.caption(
         "Out-of-sample predictions: every hour is predicted by a model that did not "
         "see its fold. Times in UTC."
+    )
+
+
+@st.cache_data
+def zone_means(run: str) -> pd.DataFrame:
+    """Mean price and MAE of PyPSA and the corrected price per zone in one run."""
+    prices = cached_report().prices
+    rows = prices[prices.run == run]
+    errors = rows[MODELS].sub(rows.observed_price, axis=0).abs().add_prefix("mae_")
+    return (
+        pd.concat([rows[["bus", *PRICES]], errors], axis=1)
+        .groupby("bus", observed=True)
+        .mean()
+    )
+
+
+@st.cache_data
+def zone_prices(run: str, bus: str) -> pd.DataFrame:
+    """Hourly market, PyPSA and corrected price of one zone in one run."""
+    prices = cached_report().prices
+    rows = prices[(prices.run == run) & (prices.bus == bus)]
+    return rows.set_index("snapshot")[PRICES].sort_index()
+
+
+def duration_table(prices: pd.DataFrame, points: int = 501) -> pd.DataFrame:
+    """Every price column sorted from high to low, sampled at `points` shares of hours."""
+    share = np.linspace(0, 1, points)
+    return pd.DataFrame(
+        {c: np.quantile(prices[c], 1 - share) for c in PRICES}, index=share
+    )
+
+
+def density_table(prices: pd.DataFrame, model: str, edges: np.ndarray) -> pd.DataFrame:
+    """Hours per bin of model price (rows) and market price (columns)."""
+    counts, _, _ = np.histogram2d(prices[model], prices.observed_price, [edges, edges])
+    centres = (edges[1:] + edges[:-1]) / 2
+    return pd.DataFrame(counts, index=centres, columns=centres)
+
+
+def prices() -> None:
+    report = cached_report()
+    names = bus_names()
+    st.title("How does the correction change prices?")
+    st.caption(provenance(report))
+    st.markdown(
+        "PyPSA prices come from a cost-based model, so they miss part of what "
+        "moves market prices: price spikes, negative prices and some of the price "
+        "level. This page puts the market price next to the raw PyPSA price and "
+        f"the corrected price. {SPLIT_TEXT[report.meta['split']]}"
+    )
+
+    runs = list(report.prices.run.cat.categories)
+    left, right = st.columns([2, 1])
+    run = (
+        left.segmented_control(
+            "Year",
+            runs,
+            default=runs[-1],
+            format_func=lambda r: r.removeprefix("backcast-"),
+        )
+        if len(runs) > 1
+        else runs[0]
+    )
+    run = run or runs[-1]
+    means = zone_means(run)
+    labels = {b: label(b, names) for b in means.index}
+    buses = sorted(means.index, key=labels.get)
+    zone = st.session_state.get("prices_zone")
+    if zone not in buses:
+        zone = (means.mae_pypsa - means.mae_lgbm).idxmax()
+    bus = right.selectbox(
+        "Zone",
+        buses,
+        index=buses.index(zone),
+        format_func=labels.get,
+        key="prices_zone",
+    )
+
+    hourly = zone_prices(run, bus)
+    zone_mean = means.loc[bus]
+    st.markdown(
+        f"In **{labels[bus]}**, the market price averaged "
+        f"**{zone_mean.observed_price:.1f} EUR/MWh**. PyPSA averaged "
+        f"**{zone_mean.pypsa:.1f}** ({zone_mean.pypsa - zone_mean.observed_price:+.1f}) "
+        f"and the corrected price **{zone_mean.lgbm:.1f}** "
+        f"({zone_mean.lgbm - zone_mean.observed_price:+.1f}). The typical hourly "
+        f"error (MAE) goes from **{zone_mean.mae_pypsa:.1f}** to "
+        f"**{zone_mean.mae_lgbm:.1f} EUR/MWh**."
+    )
+
+    st.subheader("Mean price per zone")
+    st.plotly_chart(charts.zone_mean_dots(means, labels, bus), width="stretch")
+    st.caption(
+        "Zones sorted by their market price, the selected zone shaded. Where the blue "
+        "dots sit far from the black ones, PyPSA gets the price level wrong; orange "
+        "dots closer to black mean the correction fixes it."
+    )
+
+    left, right = st.columns(2)
+    left.subheader("Price duration curve")
+    left.plotly_chart(charts.duration_curves(duration_table(hourly)), width="stretch")
+    left.caption(
+        "Every hour of the year sorted from the highest to the lowest price. Look at "
+        "the two ends: the spikes on the left and the hours at or below zero on the right."
+    )
+    right.subheader("Typical day")
+    right.plotly_chart(
+        charts.typical_day(hourly.groupby(hourly.index.hour).mean()), width="stretch"
+    )
+    right.caption(
+        "Mean price at every hour of the day, in UTC. Look at the shape, such as the "
+        "morning and evening peaks and the midday dip where there is much solar."
+    )
+
+    st.subheader("Model against market, hour by hour")
+    edges = np.linspace(*np.quantile(hourly.to_numpy(), [0.005, 0.995]), 61)
+    densities = {m: density_table(hourly, m, edges) for m in MODELS}
+    zmax = max(d.to_numpy().max() for d in densities.values())
+    for column, model in zip(st.columns(2), MODELS, strict=True):
+        column.markdown(
+            f"**{MODEL_NAMES[model]}**: MAE {zone_mean[f'mae_{model}']:.1f} EUR/MWh, "
+            f"r {hourly[model].corr(hourly.observed_price):.2f}"
+        )
+        column.plotly_chart(
+            charts.price_density(densities[model], model, zmax), width="stretch"
+        )
+    st.caption(
+        "Every hour counts in the cell of its market price (across) and model price "
+        "(up), darker cells hold more hours. The closer the cells hug the dashed "
+        "line, the closer the model is to the market. The most extreme 1 % of "
+        "prices falls outside the axes."
     )
 
 

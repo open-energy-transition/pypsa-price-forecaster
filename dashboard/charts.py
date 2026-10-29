@@ -5,6 +5,7 @@ Colours are the Okabe-Ito set of pypsa-eur-backcast: black for the market,
 blue for PyPSA, orange for the corrected price and grey for the baselines.
 """
 
+import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 
@@ -24,6 +25,11 @@ NOISE_COLOR = "#BBBBBB"
 GAIN_COLOR = "#0072B2"
 CONNECTOR_COLOR = "#D5DCE4"
 ROW_HEIGHT = 22
+PRICE_SERIES = [
+    ("observed_price", "Market", OBSERVED_COLOR),
+    ("pypsa", MODEL_NAMES["pypsa"], MODEL_COLORS["pypsa"]),
+    ("lgbm", MODEL_NAMES["lgbm"], MODEL_COLORS["lgbm"]),
+]
 
 
 def layout(fig: go.Figure, height: int = 420, **kwargs) -> go.Figure:
@@ -158,12 +164,7 @@ def monthly_lines(monthly: pd.DataFrame) -> go.Figure:
 def price_lines(prices: pd.DataFrame) -> go.Figure:
     """Market, PyPSA and corrected price over time, indexed by hour or day."""
     fig = go.Figure()
-    series = [
-        ("observed_price", "Market", OBSERVED_COLOR),
-        ("pypsa", MODEL_NAMES["pypsa"], MODEL_COLORS["pypsa"]),
-        ("lgbm", MODEL_NAMES["lgbm"], MODEL_COLORS["lgbm"]),
-    ]
-    for column, name, color in series:
+    for column, name, color in PRICE_SERIES:
         fig.add_scatter(
             x=prices.index,
             y=prices[column],
@@ -174,6 +175,93 @@ def price_lines(prices: pd.DataFrame) -> go.Figure:
         )
     fig.update_yaxes(title="EUR/MWh")
     return layout(fig, hovermode="x unified")
+
+
+def zone_mean_dots(
+    means: pd.DataFrame, labels: dict[str, str], selected: str
+) -> go.Figure:
+    """Mean market, PyPSA and corrected price per zone, sorted by the market price."""
+    means = means.sort_values("observed_price")
+    fig = go.Figure()
+    for column, name, color in PRICE_SERIES:
+        fig.add_scatter(
+            x=means.index,
+            y=means[column],
+            name=name,
+            mode="markers",
+            marker=dict(color=color, size=9),
+            customdata=[labels.get(b, b) for b in means.index],
+            hovertemplate="%{customdata}: %{y:.1f} EUR/MWh<extra>%{fullData.name}</extra>",
+        )
+    if selected in means.index:
+        position = list(means.index).index(selected)
+        fig.add_vrect(
+            x0=position - 0.5,
+            x1=position + 0.5,
+            fillcolor=CONNECTOR_COLOR,
+            opacity=0.6,
+            line_width=0,
+            layer="below",
+        )
+    fig.update_xaxes(type="category", tickangle=-90)
+    fig.update_yaxes(title="mean price (EUR/MWh)")
+    return layout(fig, 400)
+
+
+def duration_curves(curves: pd.DataFrame) -> go.Figure:
+    """Prices sorted from the highest to the lowest hour, indexed by the share of hours."""
+    fig = price_lines(curves)
+    fig.add_hline(y=0, line=dict(color="#1F2933", width=1))
+    fig.update_xaxes(
+        title="share of hours at a higher price", tickformat=".0%", hoverformat=".1%"
+    )
+    return fig
+
+
+def typical_day(profile: pd.DataFrame) -> go.Figure:
+    """Mean price per hour of day."""
+    fig = price_lines(profile)
+    fig.update_traces(mode="lines+markers", marker=dict(size=5))
+    fig.update_xaxes(title="hour of day (UTC)", dtick=3, hoverformat="d")
+    return fig
+
+
+def price_density(counts: pd.DataFrame, model: str, zmax: float) -> go.Figure:
+    """
+    Hours per bin of market price (x) and model price (y), with the line where they agree.
+
+    `counts` has the model price bins as index and the market price bins as columns,
+    both at the bin centres in EUR/MWh. Colours are on a log scale up to `zmax` hours.
+    """
+    counts = counts.where(counts > 0)
+    ticks = [t for t in [1, 10, 100, 1000, 10000] if t <= max(zmax, 1)]
+    fig = go.Figure(
+        go.Heatmap(
+            x=counts.columns,
+            y=counts.index,
+            z=np.log10(counts),
+            zmin=0,
+            zmax=np.log10(max(zmax, 1)),
+            customdata=counts,
+            colorscale=[[0, "#DDE3EA"], [1, MODEL_COLORS[model]]],
+            colorbar=dict(
+                title="hours", thickness=12, tickvals=np.log10(ticks), ticktext=ticks
+            ),
+            hovertemplate="market %{x:.0f}, model %{y:.0f} EUR/MWh: "
+            "%{customdata:.0f} hours<extra></extra>",
+        )
+    )
+    ends = [counts.columns[0], counts.columns[-1]]
+    fig.add_scatter(
+        x=ends,
+        y=ends,
+        mode="lines",
+        line=dict(color=OBSERVED_COLOR, width=1, dash="dash"),
+        hoverinfo="skip",
+    )
+    fig.update_xaxes(title="market price (EUR/MWh)")
+    fig.update_yaxes(title=f"{MODEL_NAMES[model]} (EUR/MWh)")
+    return layout(fig, 420, showlegend=False)
 
 
 def history_lines(history: pd.DataFrame) -> go.Figure:

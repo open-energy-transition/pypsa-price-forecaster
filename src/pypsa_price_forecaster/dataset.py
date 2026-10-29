@@ -18,11 +18,12 @@ import numpy as np
 import pandas as pd
 import pypsa
 
-from pypsa_price_forecaster.network import extract, to_long
+from pypsa_price_forecaster.network import PRICE_SETTERS, extract, to_long
 
 logger = logging.getLogger(__name__)
 
 TARGET = "observed_price"
+SETTERS = [*PRICE_SETTERS, "storage", "import", "other"]
 
 
 def supply(table: pd.DataFrame) -> pd.Series:
@@ -98,6 +99,9 @@ FEATURES: dict[str, Callable[[pd.DataFrame], pd.Series]] = {
     "price_daily_mean": daily_mean_price,
     "price_deviation": lambda t: t.model_price - daily_mean_price(t),
     "bus": lambda t: t.bus.astype("category"),
+    "price_setter": lambda t: pd.Categorical(t.price_setter, categories=SETTERS),
+    "imports_congested": lambda t: t.import_congested / t.import_capacity,
+    "exports_congested": lambda t: t.export_congested / t.export_capacity,
     "hour": lambda t: t.snapshot.dt.hour,
     "dayofweek": lambda t: t.snapshot.dt.day_of_week,
     "hour_local": lambda t: local_time(t).dt.hour,

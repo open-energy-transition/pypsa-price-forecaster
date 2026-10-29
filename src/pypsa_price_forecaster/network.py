@@ -12,6 +12,13 @@ Dispatch columns are the solved output, so available minus dispatched variable
 renewables is their curtailment. The reference costs are the median hourly
 marginal cost over all generators of a carrier in the network, the same for
 every bus, and track the fuel and carbon prices.
+
+The price setter of a zone is the technology of the partly loaded generators
+whose marginal cost, including the quadratic term, matches the zone price
+within ``PRICE_TOLERANCE``. Of several, the one with the largest output wins.
+Without such a generator, partly dispatched storage sets the price, otherwise
+the price comes from a neighbour (``import``). Congested capacity counts the
+capacity of the links into or out of a zone that run at their limit.
 """
 
 import numpy as np
@@ -32,6 +39,19 @@ VRES_CARRIERS = [
 ]
 LOAD_SHEDDING_CARRIER = "load"
 REFERENCE_COSTS = {"cost_gas": "CCGT", "cost_coal": "coal"}
+PRICE_SETTERS = {
+    "gas": ["CCGT", "OCGT"],
+    "coal": ["coal"],
+    "lignite": ["lignite"],
+    "oil": ["oil"],
+    "nuclear": ["nuclear"],
+    "biomass": ["biomass", "waste", "geothermal"],
+    "renewables": VRES_CARRIERS,
+    "scarcity": [LOAD_SHEDDING_CARRIER],
+}
+PRICE_TOLERANCE = 1.0  # EUR/MWh
+PARTLY = 0.1  # MW from a bound to count as partly loaded
+AT_LIMIT = 0.99  # share of the capacity of a link at its limit
 
 COLUMNS = [
     "snapshot",
@@ -49,6 +69,10 @@ COLUMNS = [
     "net_import",
     "cost_gas",
     "cost_coal",
+    "price_setter",
+    "export_capacity",
+    "import_congested",
+    "export_congested",
 ]
 
 
@@ -117,6 +141,66 @@ def import_capacity(n: pypsa.Network, zone: pd.Series) -> pd.DataFrame:
     return total
 
 
+def link_limits(n: pypsa.Network, zone: pd.Series) -> dict[str, pd.DataFrame]:
+    """Return the hourly export capacity and the capacity at its limit into and out of each zone."""
+    links = between_zones(n.links, zone)
+    p_nom = nominal(links, "p_nom")
+    forward = n.get_switchable_as_dense("Link", "p_max_pu")[links.index] * p_nom
+    reverse = -n.get_switchable_as_dense("Link", "p_min_pu")[links.index] * p_nom
+    forward, reverse = forward.clip(lower=0.0), reverse.clip(lower=0.0)
+    flow = dispatch(n.links_t.p0, n, links.index)
+    forward_full = forward.where((flow >= AT_LIMIT * forward) & (forward > 0), 0.0)
+    reverse_full = reverse.where((-flow >= AT_LIMIT * reverse) & (reverse > 0), 0.0)
+    return {
+        "export_capacity": zonal_sum(forward, links.bus0, zone)
+        + zonal_sum(reverse, links.bus1, zone),
+        "import_congested": zonal_sum(forward_full, links.bus1, zone)
+        + zonal_sum(reverse_full, links.bus0, zone),
+        "export_congested": zonal_sum(forward_full, links.bus0, zone)
+        + zonal_sum(reverse_full, links.bus1, zone),
+    }
+
+
+def price_setter(n: pypsa.Network, zone: pd.Series) -> pd.DataFrame:
+    """Return the technology setting the hourly price of each zone, see the module docstring."""
+    generators = n.generators[n.generators.bus.isin(zone.index)]
+    p = dispatch(n.generators_t.p, n, generators.index)
+    available = n.get_switchable_as_dense("Generator", "p_max_pu")[
+        generators.index
+    ] * nominal(generators, "p_nom")
+    cost = (
+        n.get_switchable_as_dense("Generator", "marginal_cost")[generators.index]
+        + 2 * generators.marginal_cost_quadratic * p
+    )
+    price = n.buses_t.marginal_price[generators.bus].set_axis(generators.index, axis=1)
+    setting = (
+        (p > PARTLY)
+        & (p < available - PARTLY)
+        & ((cost - price).abs() <= PRICE_TOLERANCE)
+    )
+    technology = generators.carrier.map(
+        {c: name for name, carriers in PRICE_SETTERS.items() for c in carriers}
+    ).fillna("other")
+    output = p.where(setting, 0.0)
+    result = pd.DataFrame("import", index=n.snapshots, columns=zone.unique())
+
+    storage = n.storage_units[n.storage_units.bus.isin(zone.index)]
+    storage_p = dispatch(n.storage_units_t.p, n, storage.index).abs()
+    storage_max = n.get_switchable_as_dense("StorageUnit", "p_max_pu")[
+        storage.index
+    ] * nominal(storage, "p_nom")
+    partly = (storage_p > PARTLY) & (storage_p < storage_max - PARTLY)
+    in_storage = partly.T.groupby(storage.bus.map(zone)).any().T
+    for name in in_storage:
+        result.loc[in_storage[name], name] = "storage"
+
+    for name, columns in generators.index.groupby(generators.bus.map(zone)).items():
+        by_technology = output[columns].T.groupby(technology[columns]).sum().T
+        set_here = by_technology.max(axis=1) > 0
+        result.loc[set_here, name] = by_technology[set_here].idxmax(axis=1)
+    return result
+
+
 def net_import(n: pypsa.Network, zone: pd.Series) -> pd.DataFrame:
     """Return the hourly solved flow of branches into each zone from other zones, net of exports."""
     total = pd.DataFrame(0.0, index=n.snapshots, columns=zone.unique())
@@ -178,6 +262,8 @@ def zonal_quantities(n: pypsa.Network, zone: pd.Series) -> dict[str, pd.DataFram
             zone,
         ),
         "net_import": net_import(n, zone),
+        "price_setter": price_setter(n, zone),
+        **link_limits(n, zone),
     }
 
 

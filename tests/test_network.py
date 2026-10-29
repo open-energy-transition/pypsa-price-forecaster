@@ -73,6 +73,25 @@ def test_extract_reads_solved_dispatch_flows_and_costs(network):
     assert np.allclose(table.storage_dispatch, 0)
 
 
+def test_extract_finds_price_setter_and_congested_links(network):
+    n = network
+    n.generators.loc["A gas", "marginal_cost"] = 70.0
+    n.generators_t["p"] = pd.DataFrame({"A gas": 60.0}, index=n.snapshots)
+    n.buses_t.marginal_price["A"] = 70.0
+    n.buses_t.marginal_price.iloc[:24, 0] = 90.0
+    n.links_t["p0"] = pd.DataFrame({"A->B1": 20.0}, index=n.snapshots)
+    n.links_t["p0"].iloc[:24] = 5.0
+    a = extract(n).query("bus == 'A'").set_index("snapshot")
+
+    assert (a.price_setter.iloc[24:] == "gas").all()
+    assert (a.price_setter.iloc[:24] != "gas").all()
+    # the link carries up to 0.5 * 40 MW from A, and 0.25 * 40 MW back
+    assert np.allclose(a.export_capacity, 20)
+    assert np.allclose(a.export_congested.iloc[24:], 20)
+    assert np.allclose(a.export_congested.iloc[:24], 0)
+    assert np.allclose(a.import_congested, 0)
+
+
 def test_local_time_and_holidays_follow_the_country_of_the_bus():
     table = pd.DataFrame(
         {

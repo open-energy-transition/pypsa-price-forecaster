@@ -202,6 +202,21 @@ EXPERIMENTS |= {
         split="forward", features=DEFAULT_FEATURES + ["bus"], models=LGBM
     ),
 }
+# Round 5: price setter and congestion from the solved network, and 2022 left out
+SETTER = DEFAULT_FEATURES + ["price_setter"]
+CONGESTION = DEFAULT_FEATURES + ["imports_congested", "exports_congested"]
+EXPERIMENTS |= {
+    "E48_year_setter": dict(split="year", features=SETTER, models=LGBM),
+    "E49_forward_setter": dict(split="forward", features=SETTER, models=LGBM),
+    "E50_year_congestion": dict(split="year", features=CONGESTION, models=LGBM),
+    "E51_forward_congestion": dict(split="forward", features=CONGESTION, models=LGBM),
+    "E52_year_no2022": dict(
+        split="year", features=DEFAULT_FEATURES, models=LGBM, exclude_years=[2022]
+    ),
+    "E53_forward_no2022": dict(
+        split="forward", features=DEFAULT_FEATURES, models=LGBM, exclude_years=[2022]
+    ),
+}
 MODELS = ["pypsa", "bus_bias", "linear", "lgbm"]
 RESULTS_BY_YEAR = Path("experiments/results_by_year.csv")
 COLUMNS = ["mae", "r", "abs_bias", "mae_top5", "mae_low5"]
@@ -210,6 +225,7 @@ COLUMNS = ["mae", "r", "abs_bias", "mae_top5", "mae_low5"]
 def run(name: str, table: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Return the scores of experiment `name` over all years and per year."""
     spec = {"folds": 4, "models": MODELS} | EXPERIMENTS[name]
+    table = table[~table.year.isin(spec.get("exclude_years", []))]
     start = time.time()
     predictions = cross_validate(
         table,

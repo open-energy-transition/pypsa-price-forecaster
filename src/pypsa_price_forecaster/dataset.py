@@ -109,7 +109,7 @@ FEATURES: dict[str, Callable[[pd.DataFrame], pd.Series]] = {
     "holiday": holiday,
     "month": lambda t: t.snapshot.dt.month,
 }
-# best set on 2023 (experiments/NOTES.md); month leaks the price level of the year
+# best set on six held-out years (experiments/NOTES.md, round 5)
 DEFAULT_FEATURES = [
     "model_price",
     "margin_domestic",
@@ -121,6 +121,9 @@ DEFAULT_FEATURES = [
     "firm_utilisation",
     "net_import_share",
     "storage_share",
+    "price_setter",
+    "imports_congested",
+    "exports_congested",
 ]
 
 

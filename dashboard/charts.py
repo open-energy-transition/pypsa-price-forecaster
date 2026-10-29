@@ -314,3 +314,52 @@ def experiment_dots(experiments: pd.DataFrame) -> go.Figure:
     fig.update_xaxes(categoryorder="array", categoryarray=list(ids))
     fig.update_yaxes(title="median MAE (EUR/MWh)")
     return layout(fig, 440)
+
+
+def skill_bars(skill: pd.Series) -> go.Figure:
+    """Skill of the corrected price per held-out year, 1 - MAE / MAE of PyPSA."""
+    colors = [HELPS_COLOR if v > 0 else HURTS_COLOR for v in skill]
+    fig = go.Figure(
+        go.Bar(
+            x=[str(y) for y in skill.index],
+            y=skill,
+            marker=dict(color=colors, cornerradius=4),
+            text=[f"{v:+.0%}" for v in skill],
+            textposition="outside",
+            hovertemplate="%{x}: %{y:+.1%} lower MAE than PyPSA<extra></extra>",
+        )
+    )
+    fig.add_hline(y=0, line_width=1, line_color="#1F2933")
+    fig.update_yaxes(title="skill (1 - MAE / MAE PyPSA)", tickformat=".0%")
+    fig.update_xaxes(type="category")
+    return layout(fig, 320, bargap=0.4)
+
+
+SETTER_COLORS = {
+    "gas": "#D55E00",
+    "coal": "#555555",
+    "lignite": "#8C6D46",
+    "nuclear": "#9467BD",
+    "renewables": "#009E73",
+    "storage": "#56B4E9",
+    "import": "#BBBBBB",
+    "other": "#E0E0E0",
+}
+
+
+def setter_bars(shares: pd.DataFrame) -> go.Figure:
+    """Stacked share of hours per year (rows) and technology (columns) setting the model price."""
+    fig = go.Figure()
+    for technology, color in SETTER_COLORS.items():
+        if technology not in shares:
+            continue
+        fig.add_bar(
+            x=[str(y) for y in shares.index],
+            y=shares[technology],
+            name=technology,
+            marker=dict(color=color),
+            hovertemplate="%{x}: %{y:.0%} of hours<extra>" + technology + "</extra>",
+        )
+    fig.update_yaxes(title="share of hours", tickformat=".0%", range=[0, 1])
+    fig.update_xaxes(type="category")
+    return layout(fig, 340, barmode="stack", bargap=0.3)

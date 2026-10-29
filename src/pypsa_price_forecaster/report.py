@@ -15,6 +15,7 @@ the branch ``master`` always shows the latest results:
 - ``monthly.csv``: median over buses of the MAE per model, year and month
 - ``ablation.csv``: scores of ``lgbm`` without or with each feature
 - ``importance.csv``: share of the split gain per feature of ``lgbm`` fitted on all rows
+- ``price_setters.csv``: share of hours per run, bus and technology setting the model price
 - ``prices.parquet``: observed, PyPSA and out-of-sample ``lgbm`` price per hour and bus
 - ``history.csv``: headline scores of every report written, one row appended per report
 """
@@ -126,6 +127,15 @@ def ablation(
     return pd.DataFrame(result).T.rename_axis(["change", "feature"])
 
 
+def price_setters(table: pd.DataFrame) -> pd.Series:
+    """Return the share of hours per run, bus and technology setting the model price."""
+    return (
+        table.groupby(["run", "bus"])
+        .price_setter.value_counts(normalize=True)
+        .rename("share")
+    )
+
+
 def importance(table: pd.DataFrame, features: list[str]) -> pd.Series:
     """Return the share of the split gain per feature of ``lgbm`` fitted on all rows."""
     booster = make_model("lgbm", features).fit(table).estimator.booster_
@@ -191,6 +201,7 @@ def write_report(
         out / "prices.parquet", compression="zstd", compression_level=19
     )
     importance(table, features).to_csv(out / "importance.csv", index_label="feature")
+    price_setters(table).to_csv(out / "price_setters.csv")
 
     seed_mae = [result.mae["lgbm"]]
     if with_ablation:

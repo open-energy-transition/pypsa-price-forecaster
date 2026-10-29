@@ -35,6 +35,7 @@ def test_write_report(table, tmp_path, monkeypatch, small_lgbm):
     assert len(prices) == table.observed_price.notna().sum()
     assert set(pd.read_csv(tmp_path / "monthly.csv").model) == set(scores.index)
     assert len(pd.read_csv(tmp_path / "history.csv")) == 2
+    assert (tmp_path / "price_setters.csv").exists()
     by_year = pd.read_csv(tmp_path / "scores_by_year.csv", index_col=[0, 1])
     assert by_year.index.get_level_values("year").unique().tolist() == [
         2019,

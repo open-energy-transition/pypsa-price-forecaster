@@ -122,6 +122,22 @@ def overview() -> None:
 
     years = report.by_year.index.get_level_values("year").unique()
     if len(years) > 1:
+        st.subheader("Skill per held-out year")
+        mae = report.by_year.mae.unstack("model")
+        skill = 1 - mae.lgbm / mae.pypsa
+        st.plotly_chart(charts.skill_bars(skill), width="stretch")
+        typical = skill.drop(2022, errors="ignore")
+        st.caption(
+            f"Share by which the corrected price lowers the median MAE of PyPSA in "
+            f"each year, predicted by a model that did not see that year. Mean "
+            f"{skill.mean():+.0%}, worst year {skill.min():+.0%}"
+            + (
+                f"; without 2022, whose error is mostly the price level of the "
+                f"gas crisis, mean {typical.mean():+.0%}."
+                if 2022 in skill.index
+                else "."
+            )
+        )
         st.subheader("Per year")
         st.dataframe(
             report.by_year[["mae", "r", "mae_top5", "mae_low5"]]
@@ -351,6 +367,27 @@ def prices() -> None:
         "Mean price at every hour of the day, in UTC. Look at the shape, such as the "
         "morning and evening peaks and the midday dip where there is much solar."
     )
+
+    if report.price_setters is not None:
+        st.subheader("What sets the model price")
+        setters = report.price_setters[report.price_setters.bus == bus]
+        shares = (
+            setters.assign(
+                year=setters.run.str.removeprefix("backcast-"),
+                technology=setters.price_setter.where(
+                    setters.price_setter.isin(charts.SETTER_COLORS), "other"
+                ),
+            )
+            .pivot_table("share", "year", "technology", aggfunc="sum")
+            .fillna(0.0)
+        )
+        st.plotly_chart(charts.setter_bars(shares), width="stretch")
+        st.caption(
+            "Share of hours in which each technology sets the PyPSA price of the zone: "
+            "the partly loaded plants whose cost matches the price, else storage or "
+            "imports. Where gas sets the market price but coal or lignite set the "
+            "model price, as in 2022, PyPSA is too cheap."
+        )
 
     st.subheader("Model against market, hour by hour")
     edges = np.linspace(*np.quantile(hourly.to_numpy(), [0.005, 0.995]), 61)

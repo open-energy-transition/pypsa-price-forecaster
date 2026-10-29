@@ -55,10 +55,12 @@ pixi run ppf predict path/to/solved_2030.nc -m models/lgbm.joblib -o results/pri
 | `firm_utilisation` | dispatched / available other generators |
 | `net_import_share` | solved net import / load |
 | `storage_share` | storage unit dispatch / load |
+| `price_setter` | technology of the partly loaded generators whose marginal cost sets the zone price, else storage or import |
+| `imports_congested`, `exports_congested` | share of the import or export capacity on links running at their limit |
 | `hour`, `dayofweek` | UTC calendar |
 
 These are the defaults, chosen in [experiments/NOTES.md](experiments/NOTES.md).
-Also available, but not used by default: `month`, `bus`, `cost_gas`, `cost_coal`, `price_to_gas`, `price_daily_mean`, `price_deviation`, and the margins in MW.
+Also available, but not used by default: `month`, `bus`, `cost_gas`, `cost_coal`, `price_to_gas`, `price_daily_mean`, `price_deviation`, `hour_local`, `dayofweek_local`, `holiday`, and the margins in MW.
 
 Available supply is `p_nom × p_max_pu` of generators (without load shedding) and storage units.
 Import capacity is the hourly capacity of the NTC links into the zone.

@@ -218,3 +218,29 @@ All rows apply 70 % of the correction. Values are mean / worst skill per held-ou
 - **Keep the domestic margin and the renewable share.** The median-MAE ablation suggested dropping them, but mean skill falls on both splits without them.
 - **Bus identity does not justify itself.** It is even on the year split and +0.014 on the forward split, about the seed noise, and it cannot handle zones unseen in training.
 - **The defaults stay as they are.**
+
+## Round 5: price setter, congestion and 2022 (2026-10-29)
+
+New columns from the solved network (`network.py`), re-extracted for all six years:
+- **Price setter:** the technology of the partly loaded generators whose marginal cost, quadratic term included, matches the zone price. If none does, it is storage or import.
+- **Congestion:** the share of import or export capacity on links at their limit.
+
+All rows apply 70 % of the correction. Values are mean / worst skill per held-out year.
+
+| id | features | year | forward |
+|---|---|---|---|
+| E42/E43 | default (10) | 0.133 / 0.042 | 0.092 / −0.074 |
+| E48/E49 | + `price_setter` | 0.148 / 0.082 | 0.100 / −0.067 |
+| E50/E51 | + `imports_congested`, `exports_congested` | 0.149 / 0.047 | 0.100 / −0.062 |
+| **E54/E55** | **+ both (13, now the default)** | **0.157 / 0.084** | **0.104 / −0.069** |
+| E52/E53 | default, 2022 left out | 0.124 / 0.035 | 0.076 / −0.064 |
+
+- **Both network features help on both splits and are explainable:** which technology sets the model's price, and how full the interconnectors are.
+- **The price setter explains part of 2022.** In the model, gas sets the price in 26 % of zone-hours in 2022, against 45–66 % in the other years. Coal and lignite are marginal instead.
+  The market priced gas in most hours, so the backcast's merit order is off in the crisis. The correction cannot learn this from other years.
+- **Keep 2022 in training.** Over the same five years, mean skill falls from 0.139 to 0.124 without it, mostly in 2021 (0.176 → 0.104).
+  The dashboard shows the mean skill with and without 2022, as its error is mostly an upstream level problem.
+
+### Defaults changed
+
+`DEFAULT_FEATURES` adds `price_setter`, `imports_congested` and `exports_congested`. The linear baseline one-hot encodes categorical features.

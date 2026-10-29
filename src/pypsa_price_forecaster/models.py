@@ -15,10 +15,11 @@ from pathlib import Path
 import joblib
 import pandas as pd
 from lightgbm import LGBMRegressor
+from sklearn.compose import make_column_selector, make_column_transformer
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import HuberRegressor
 from sklearn.pipeline import make_pipeline
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
 from pypsa_price_forecaster.dataset import DEFAULT_FEATURES, TARGET, feature_matrix
 
@@ -149,8 +150,13 @@ def base_model(name: str, features: list[str]) -> Forecaster:
     if name == "linear":
         return Residual(
             make_pipeline(
-                SimpleImputer(),
-                StandardScaler(),
+                make_column_transformer(
+                    (
+                        OneHotEncoder(handle_unknown="ignore"),
+                        make_column_selector(dtype_include="category"),
+                    ),
+                    remainder=make_pipeline(SimpleImputer(), StandardScaler()),
+                ),
                 HuberRegressor(max_iter=1000),
             ),
             features,

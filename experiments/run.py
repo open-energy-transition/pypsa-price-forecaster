@@ -217,6 +217,13 @@ EXPERIMENTS |= {
         split="forward", features=DEFAULT_FEATURES, models=LGBM, exclude_years=[2022]
     ),
 }
+NETWORK = DEFAULT_FEATURES + ["price_setter", "imports_congested", "exports_congested"]
+EXPERIMENTS |= {
+    "E54_year_setter_congestion": dict(split="year", features=NETWORK, models=LGBM),
+    "E55_forward_setter_congestion": dict(
+        split="forward", features=NETWORK, models=LGBM
+    ),
+}
 MODELS = ["pypsa", "bus_bias", "linear", "lgbm"]
 RESULTS_BY_YEAR = Path("experiments/results_by_year.csv")
 COLUMNS = ["mae", "r", "abs_bias", "mae_top5", "mae_low5"]

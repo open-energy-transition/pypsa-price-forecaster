@@ -1,6 +1,6 @@
 {
-  "created": "2026-10-29T12:18:11+00:00",
-  "commit": "f1a49dc",
+  "created": "2026-10-29T16:41:27+00:00",
+  "commit": "775e00a",
   "dirty": true,
   "version": "0.1.0",
   "runs": [
@@ -33,7 +33,10 @@
     "curtailment_share",
     "firm_utilisation",
     "net_import_share",
-    "storage_share"
+    "storage_share",
+    "price_setter",
+    "imports_congested",
+    "exports_congested"
   ],
   "lgbm_params": {
     "colsample_bytree": 0.9,
@@ -49,8 +52,8 @@
     "shrink": 0.7
   },
   "seed_mae": [
-    19.4051,
-    19.5051,
-    19.5644
+    18.9262,
+    18.9875,
+    18.8763
   ]
 }

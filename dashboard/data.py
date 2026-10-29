@@ -116,6 +116,7 @@ class Report:
     ablation: pd.DataFrame | None
     prices: pd.DataFrame
     history: pd.DataFrame
+    price_setters: pd.DataFrame | None
 
     @property
     def noise(self) -> float:
@@ -148,6 +149,9 @@ def read_report(path: Path | None = None) -> Report | None:
         else None,
         prices=pd.read_parquet(path / "prices.parquet"),
         history=pd.read_csv(path / "history.csv", parse_dates=["created"]),
+        price_setters=pd.read_csv(path / "price_setters.csv")
+        if (path / "price_setters.csv").exists()
+        else None,
     )
 
 

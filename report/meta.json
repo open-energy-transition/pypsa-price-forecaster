@@ -1,18 +1,28 @@
 {
-  "created": "2026-10-28T16:56:05+00:00",
-  "commit": "d0f12ae",
+  "created": "2026-10-29T10:13:01+00:00",
+  "commit": "e0e2a12",
   "dirty": true,
   "version": "0.1.0",
   "runs": [
-    "backcast-2023"
+    "backcast-2019",
+    "backcast-2020",
+    "backcast-2021",
+    "backcast-2022",
+    "backcast-2023",
+    "backcast-2024"
   ],
   "years": [
-    2023
+    2019,
+    2020,
+    2021,
+    2022,
+    2023,
+    2024
   ],
-  "split": "month",
-  "folds": 12,
+  "split": "year",
+  "folds": 4,
   "buses": 43,
-  "hours": 376630,
+  "hours": 2180990,
   "features": [
     "model_price",
     "margin_domestic",
@@ -38,8 +48,8 @@
     "verbose": -1
   },
   "seed_mae": [
-    16.6616,
-    16.6459,
-    16.7286
+    19.3033,
+    19.4469,
+    19.3622
   ]
 }

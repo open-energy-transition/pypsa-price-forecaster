@@ -84,3 +84,84 @@ Positive numbers mean MAE rises.
 - Local time hour and holidays. The hour is currently UTC, and it is the third most important feature.
 - Neighbour price spreads and congestion of the NTC links.
 - Spike hours remain the largest error (top-5 % MAE ~34). Try a squared-error model or a quantile ensemble for the tails.
+
+## Round 2: six years, 2019–2024 (2026-10-29)
+
+Input: the solved networks of `pypsa-eur-backcast` for 2019 to 2024, extracted with each year's `resources/backcast-<year>/day_ahead_prices.csv`.
+`experiments/sanity.py <year>` reproduces the backcast's `price_metrics.csv` exactly for every year.
+
+Raw PyPSA, median over zones:
+
+| year | MAE | r | \|bias\| | zones with prices |
+|---|---|---|---|---|
+| 2019 | 7.89 | 0.707 | 4.9 | 40 |
+| 2020 | 9.36 | 0.753 | 6.3 | 40 |
+| 2021 | 25.70 | 0.917 | 7.8 | 41 |
+| 2022 | 92.43 | 0.533 | 70.9 | 42 |
+| 2023 | 21.03 | 0.752 | 6.7 | 43 |
+| 2024 | 22.94 | 0.680 | 10.8 | 43 |
+
+From here on, skill means 1 − MAE / raw MAE of the same year. Splits:
+- `year`: train on the other five years.
+- `forward`: train on the earlier years only, so 2019 is not scored.
+
+### Within-year splits overstate the gain: two years (2019 + 2023)
+
+Experiments E19–E28 on two years, suffixed `_2y` in `results.csv`.
+
+| experiment | raw MAE | lgbm MAE |
+|---|---|---|
+| month split (E28) | 16.28 | 13.89 |
+| year split (E19) | 16.28 | 20.53 |
+
+- The correction that looks best within a year is worse than raw on an unseen year.
+- Seeds alone move the year split MAE between 20.3 and 22.2.
+
+### Six years (E19, E20, E23, E24, E27)
+
+Skill per year of `lgbm` with the default features:
+
+| split | 2019 | 2020 | 2021 | 2022 | 2023 | 2024 | mean | worst |
+|---|---|---|---|---|---|---|---|---|
+| year (E19) | +0.01 | +0.14 | +0.20 | +0.11 | −0.02 | +0.17 | +0.10 | −0.02 |
+| forward (E20) | – | +0.23 | −0.09 | +0.16 | −0.10 | +0.17 | +0.07 | −0.10 |
+
+- With five training years, the year split helps four of six years clearly: median MAE 20.94 → 19.30, r 0.729 → 0.768, bottom-5 % MAE 39.5 → 25.0.
+  `bus_bias` (20.53) and `linear` (21.89) do not transfer.
+- The forward split fails at the regime changes. In 2021, the start of the gas crisis, MAE rises 25.7 → 28.0. In 2023, after the crisis, it rises 21.0 → 23.2.
+  In 2023 the year split correction overshoots: r improves 0.752 → 0.791, but |bias| 6.7 → 10.3 and std ratio 0.81 → 1.06.
+  The model learns the hourly shape of the error, not its level.
+- 2022 keeps a median |bias| of 61 after the correction (71 raw). The level of the crisis year is not learnable from the other years.
+- Fuel cost features (E23) do not help: 20.98 vs 19.30. Price and margins alone (E27): 21.40, worse than raw.
+
+### Feature ablation on six years (report of 2026-10-29, year split)
+
+Three seeds give a noise band of ±0.15 MAE (2σ).
+
+| removed | Δ MAE | | added | Δ MAE |
+|---|---|---|---|---|
+| hour | +0.70 | | bus | −0.69 |
+| margin_with_imports | +0.45 | | margin_domestic_mw | −0.39 |
+| vres_share | +0.43 | | margin_with_imports_mw | −0.27 |
+| firm_utilisation | +0.39 | | price_to_gas | −0.20 |
+| storage_share | +0.22 | | price_daily_mean | −0.14 |
+| margin_domestic | +0.17 | | price_deviation | +0.04 |
+| dayofweek | +0.17 | | month | +0.22 |
+| net_import_share | +0.17 | | cost_gas | +1.66 |
+| curtailment_share | +0.03 | | cost_coal | +2.40 |
+| model_price | **−0.53** | | | |
+
+- **Absolute price levels hurt across years.** Removing `model_price` improves MAE by 0.53, and gas and coal costs add 1.7 and 2.4.
+  Trees cannot extrapolate a level they have not seen. Scale-free features (shares, ratios, margins) carry over.
+- **The capacity margins matter across years** (+0.45 and +0.17 when removed), although they were at the noise level within 2023.
+- **Bus identity helps across years (−0.69)**, unlike within 2023. The zone-specific shape of the error persists, though `bus_bias` alone does not.
+- **Month hurts across years (+0.22)**, as expected from its leak within a year.
+- Split gain ranks `model_price` first (30 %), although removing it helps. Gain is a poor guide again.
+
+### Next
+
+Round 3 follows the top of [ROADMAP.md](ROADMAP.md):
+- local time and holidays;
+- the target scaled by the gas plant cost (`lgbm_gas`);
+- scale-free features without `model_price`, with and without bus identity;
+- the mixed week split for comparison.

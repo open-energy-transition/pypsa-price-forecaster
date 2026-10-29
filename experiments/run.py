@@ -148,6 +148,34 @@ EXPERIMENTS |= {
     # the round 1 split on all years, to compare with the year split
     "E28_month_default": dict(split="month", features=DEFAULT_FEATURES, models=LGBM),
 }
+# Round 3: six years, roadmap in experiments/ROADMAP.md
+LOCAL = [
+    {"hour": "hour_local", "dayofweek": "dayofweek_local"}.get(f, f)
+    for f in DEFAULT_FEATURES
+] + ["holiday"]
+GAS = ["pypsa", "lgbm_gas"]
+SCALE_FREE = [f for f in DEFAULT_FEATURES if f != "model_price"] + ["price_to_gas"]
+EXPERIMENTS |= {
+    "E29_year_local": dict(split="year", features=LOCAL, models=LGBM),
+    "E30_forward_local": dict(split="forward", features=LOCAL, models=LGBM),
+    "E31_year_gas": dict(split="year", features=DEFAULT_FEATURES, models=GAS),
+    "E32_forward_gas": dict(split="forward", features=DEFAULT_FEATURES, models=GAS),
+    "E33_year_gas_local": dict(split="year", features=LOCAL, models=GAS),
+    "E34_forward_gas_local": dict(split="forward", features=LOCAL, models=GAS),
+    # without model price, which carries the price level of a year (ablation: -0.53 MAE when removed)
+    "E36_year_scalefree": dict(split="year", features=SCALE_FREE, models=LGBM),
+    "E37_forward_scalefree": dict(split="forward", features=SCALE_FREE, models=LGBM),
+    "E38_year_scalefree_bus": dict(
+        split="year", features=SCALE_FREE + ["bus"], models=LGBM
+    ),
+    "E39_forward_scalefree_bus": dict(
+        split="forward", features=SCALE_FREE + ["bus"], models=LGBM
+    ),
+    # every 5th week of all years held out, as a mixed split to compare with the year split
+    "E35_week5_default": dict(
+        split="week", folds=5, features=DEFAULT_FEATURES, models=LGBM
+    ),
+}
 MODELS = ["pypsa", "bus_bias", "linear", "lgbm"]
 RESULTS_BY_YEAR = Path("experiments/results_by_year.csv")
 COLUMNS = ["mae", "r", "abs_bias", "mae_top5", "mae_low5"]
@@ -196,6 +224,13 @@ if __name__ == "__main__":
         print(f"\n== {name}")
         print(result.drop(columns=["experiment", "features"]).to_string(index=False))
         print(by_year.drop(columns="experiment").to_string(index=False))
+        mae = by_year.pivot(index="year", columns="model", values="mae")
+        if "pypsa" in mae:
+            skill = 1 - mae.drop(columns="pypsa").div(mae.pypsa, axis=0)
+            print("skill (1 - MAE / MAE pypsa):")
+            print(skill.round(3).to_string())
+            print("mean:", skill.mean().round(3).to_dict())
+            print("worst:", skill.min().round(3).to_dict())
         result.to_csv(RESULTS, mode="a", header=not RESULTS.exists(), index=False)
         by_year.to_csv(
             RESULTS_BY_YEAR, mode="a", header=not RESULTS_BY_YEAR.exists(), index=False

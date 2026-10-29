@@ -40,7 +40,7 @@ def make_network(year: int, seed: int) -> pypsa.Network:
             index=snapshots,
         ),
     )
-    n.add("Generator", "A gas", bus="A", carrier="CCGT", p_nom=100)
+    n.add("Generator", "A gas", bus="A", carrier="CCGT", p_nom=100, marginal_cost=60)
     n.add(
         "Generator",
         "A solar",

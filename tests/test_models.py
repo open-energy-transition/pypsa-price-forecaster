@@ -1,3 +1,4 @@
+import numpy as np
 import pandas as pd
 import pytest
 from typer.testing import CliRunner
@@ -97,3 +98,10 @@ def test_cli_extract_evaluate_train_predict(run_files, tmp_path):
     prices = pd.read_csv(tmp_path / "prices.csv", index_col=0, parse_dates=True)
     assert list(prices.columns) == ["A", "B1", "B2"]
     assert len(prices) == 24 * 28 and prices.notna().all().all()
+
+
+def test_gas_scaled_correction_scales_with_the_gas_cost(table, small_lgbm):
+    model = make_model("lgbm_gas", ["model_price", "margin_with_imports"]).fit(table)
+    doubled = table.assign(cost_gas=2 * table.cost_gas)
+    correction = model.predict(table) - table.model_price
+    assert np.allclose(model.predict(doubled) - table.model_price, 2 * correction)

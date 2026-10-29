@@ -8,10 +8,12 @@ day-ahead price. Features are computed from these columns on the fly, so a new
 feature only needs an entry in ``FEATURES``.
 """
 
+import functools
 import logging
 from collections.abc import Callable, Iterable
 from pathlib import Path
 
+import holidays
 import numpy as np
 import pandas as pd
 import pypsa
@@ -26,6 +28,51 @@ TARGET = "observed_price"
 def supply(table: pd.DataFrame) -> pd.Series:
     """Available domestic supply of generators and storage units in MW."""
     return table.supply_firm + table.supply_vres + table.supply_storage
+
+
+# time zone of each country code, the first two letters of a bus name
+TIME_ZONES = {
+    **dict.fromkeys(["GB", "IE", "PT"], "Europe/London"),
+    **dict.fromkeys(["BG", "EE", "FI", "GR", "LT", "LV", "RO"], "Europe/Helsinki"),
+}
+DEFAULT_TIME_ZONE = "Europe/Berlin"
+
+
+def local_time(table: pd.DataFrame) -> pd.Series:
+    """Naive local time of every row in the time zone of the country of its bus."""
+    country = table.bus.str[:2]
+    local = pd.Series(pd.NaT, index=table.index, dtype=table.snapshot.dtype)
+    for zone, rows in country.groupby(
+        country.map(TIME_ZONES).fillna(DEFAULT_TIME_ZONE)
+    ).groups.items():
+        local[rows] = (
+            table.snapshot[rows]
+            .dt.tz_localize("UTC")
+            .dt.tz_convert(zone)
+            .dt.tz_localize(None)
+        )
+    return local
+
+
+@functools.cache
+def public_holidays(country: str, years: tuple[int, ...]) -> frozenset:
+    """Public holiday dates of a country, empty for countries the holidays package lacks."""
+    try:
+        return frozenset(holidays.country_holidays(country, years=years))
+    except NotImplementedError:
+        logger.warning(f"No public holidays for country {country}.")
+        return frozenset()
+
+
+def holiday(table: pd.DataFrame) -> pd.Series:
+    """Whether the local date of every row is a public holiday in the country of its bus."""
+    date = local_time(table).dt.date
+    country = table.bus.str[:2]
+    years = tuple(sorted(table.snapshot.dt.year.unique().tolist()))
+    result = pd.Series(False, index=table.index)
+    for code, rows in country.groupby(country).groups.items():
+        result[rows] = date[rows].isin(public_holidays(code, years))
+    return result.astype(int)
 
 
 def daily_mean_price(table: pd.DataFrame) -> pd.Series:
@@ -53,6 +100,9 @@ FEATURES: dict[str, Callable[[pd.DataFrame], pd.Series]] = {
     "bus": lambda t: t.bus.astype("category"),
     "hour": lambda t: t.snapshot.dt.hour,
     "dayofweek": lambda t: t.snapshot.dt.day_of_week,
+    "hour_local": lambda t: local_time(t).dt.hour,
+    "dayofweek_local": lambda t: local_time(t).dt.day_of_week,
+    "holiday": holiday,
     "month": lambda t: t.snapshot.dt.month,
 }
 # best set on 2023 (experiments/NOTES.md); month leaks the price level of the year

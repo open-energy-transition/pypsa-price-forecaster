@@ -23,6 +23,8 @@ from sklearn.preprocessing import StandardScaler
 from pypsa_price_forecaster.dataset import DEFAULT_FEATURES, TARGET, feature_matrix
 
 DEFAULT_MODELS = ["pypsa", "bus_bias", "linear", "lgbm"]
+# lgbm_gas learns the error relative to the marginal cost of gas plants
+MODELS = [*DEFAULT_MODELS, "lgbm_gas"]
 
 
 def labelled(table: pd.DataFrame) -> pd.DataFrame:
@@ -66,22 +68,36 @@ class BusBias(Forecaster):
 
 
 class Residual(Forecaster):
-    """Model price plus a correction regressed on features by `estimator`."""
+    """
+    Model price plus a correction regressed on features by `estimator`.
 
-    def __init__(self, estimator, features: list[str]) -> None:
+    With a `scale` column, the estimator learns the error divided by that
+    column, e.g. the marginal cost of gas plants, and the correction is
+    multiplied back, so it carries over to years with other fuel prices.
+    """
+
+    def __init__(
+        self, estimator, features: list[str], scale: str | None = None
+    ) -> None:
         self.estimator = estimator
         self.features = list(features)
+        self.scale = scale
+
+    def _scale(self, table: pd.DataFrame) -> pd.Series | float:
+        return 1.0 if self.scale is None else table[self.scale]
 
     def _fit(self, rows: pd.DataFrame) -> None:
+        scale = self._scale(rows)
+        if self.scale is not None and not (scale > 0).all():
+            raise ValueError(f"Scale {self.scale} must be positive in every row")
         self.estimator.fit(
-            feature_matrix(rows, self.features), rows[TARGET] - rows.model_price
+            feature_matrix(rows, self.features),
+            (rows[TARGET] - rows.model_price) / scale,
         )
 
     def correction(self, table: pd.DataFrame) -> pd.Series:
-        return pd.Series(
-            self.estimator.predict(feature_matrix(table, self.features)),
-            index=table.index,
-        )
+        predicted = self.estimator.predict(feature_matrix(table, self.features))
+        return pd.Series(predicted, index=table.index) * self._scale(table)
 
 
 def make_model(
@@ -116,7 +132,7 @@ def base_model(name: str, features: list[str]) -> Forecaster:
             ),
             features,
         )
-    if name == "lgbm":
+    if name in ("lgbm", "lgbm_gas"):
         return Residual(
             LGBMRegressor(
                 objective="l1",
@@ -131,8 +147,9 @@ def base_model(name: str, features: list[str]) -> Forecaster:
                 verbose=-1,
             ),
             features,
+            scale="cost_gas" if name == "lgbm_gas" else None,
         )
-    raise ValueError(f"Unknown model {name}, available: {DEFAULT_MODELS}")
+    raise ValueError(f"Unknown model {name}, available: {MODELS}")
 
 
 def save(model: Forecaster, path: str | Path) -> None:

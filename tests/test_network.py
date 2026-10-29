@@ -2,7 +2,13 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from pypsa_price_forecaster.dataset import DEFAULT_FEATURES, build_table, feature_matrix
+from pypsa_price_forecaster.dataset import (
+    DEFAULT_FEATURES,
+    build_table,
+    feature_matrix,
+    holiday,
+    local_time,
+)
 from pypsa_price_forecaster.network import COLUMNS, extract, market_zones
 
 
@@ -65,3 +71,14 @@ def test_extract_reads_solved_dispatch_flows_and_costs(network):
     assert np.allclose(table[table.bus == "B2"].net_import, 10)
     assert np.allclose(table.cost_gas, 70)
     assert np.allclose(table.storage_dispatch, 0)
+
+
+def test_local_time_and_holidays_follow_the_country_of_the_bus():
+    table = pd.DataFrame(
+        {
+            "snapshot": pd.to_datetime(["2023-07-01 10:00"] * 3 + ["2023-12-25 12:00"]),
+            "bus": ["DE00", "FI00", "PT00", "GB00"],
+        }
+    )
+    assert local_time(table).dt.hour.tolist() == [12, 13, 11, 12]
+    assert holiday(table).tolist() == [0, 0, 0, 1]

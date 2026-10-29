@@ -204,3 +204,17 @@ Experiments E01–E41 used the whole correction: rerun them with `lgbm_full` to 
 - Price-setting technology and congestion features (roadmap 5).
 - Seed bagging and sample weights per zone-year, both simple.
 - Tails: quantile or L2 models for the spike hours, which still carry the largest errors.
+
+## Round 4: simpler or zone-aware feature sets (2026-10-29)
+
+All rows apply 70 % of the correction. Values are mean / worst skill per held-out year.
+
+| id | features | year | forward |
+|---|---|---|---|
+| E42/E43 | default (10) | 0.133 / 0.042 | 0.092 / −0.074 |
+| E44/E45 | without `margin_domestic` and `vres_share` (8) | 0.119 / 0.012 | 0.074 / −0.083 |
+| E46/E47 | default plus `bus` | 0.128 / 0.039 | 0.106 / −0.051 |
+
+- **Keep the domestic margin and the renewable share.** The median-MAE ablation suggested dropping them, but mean skill falls on both splits without them.
+- **Bus identity does not justify itself.** It is even on the year split and +0.014 on the forward split, about the seed noise, and it cannot handle zones unseen in training.
+- **The defaults stay as they are.**

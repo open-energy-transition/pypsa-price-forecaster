@@ -190,6 +190,18 @@ EXPERIMENTS |= {
         split="week", folds=5, features=DEFAULT_FEATURES, models=LGBM
     ),
 }
+# Round 4: simpler feature sets with lgbm applying 70 % of its correction
+LEAN = [f for f in DEFAULT_FEATURES if f not in ("margin_domestic", "vres_share")]
+EXPERIMENTS |= {
+    "E44_year_lean": dict(split="year", features=LEAN, models=LGBM),
+    "E45_forward_lean": dict(split="forward", features=LEAN, models=LGBM),
+    "E46_year_bus": dict(
+        split="year", features=DEFAULT_FEATURES + ["bus"], models=LGBM
+    ),
+    "E47_forward_bus": dict(
+        split="forward", features=DEFAULT_FEATURES + ["bus"], models=LGBM
+    ),
+}
 MODELS = ["pypsa", "bus_bias", "linear", "lgbm"]
 RESULTS_BY_YEAR = Path("experiments/results_by_year.csv")
 COLUMNS = ["mae", "r", "abs_bias", "mae_top5", "mae_low5"]

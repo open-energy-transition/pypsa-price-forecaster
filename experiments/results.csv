@@ -100,3 +100,11 @@ pypsa,20.939,0.729,7.666,187.231,39.547,E42_year_shrink,year,"model_price,margin
 lgbm_shrink,19.405,0.778,7.898,181.888,26.616,E42_year_shrink,year,"model_price,margin_domestic,margin_with_imports,hour,dayofweek,vres_share,curtailment_share,firm_utilisation,net_import_share,storage_share",{},186
 pypsa,22.939,0.742,8.7,205.869,39.732,E43_forward_shrink,forward,"model_price,margin_domestic,margin_with_imports,hour,dayofweek,vres_share,curtailment_share,firm_utilisation,net_import_share,storage_share",{},114
 lgbm_shrink,22.772,0.778,11.243,193.545,29.378,E43_forward_shrink,forward,"model_price,margin_domestic,margin_with_imports,hour,dayofweek,vres_share,curtailment_share,firm_utilisation,net_import_share,storage_share",{},114
+pypsa,20.939,0.729,7.666,187.231,39.547,E44_year_lean,year,"model_price,margin_with_imports,hour,dayofweek,curtailment_share,firm_utilisation,net_import_share,storage_share",{},172
+lgbm,19.646,0.771,8.049,181.222,27.268,E44_year_lean,year,"model_price,margin_with_imports,hour,dayofweek,curtailment_share,firm_utilisation,net_import_share,storage_share",{},172
+pypsa,22.939,0.742,8.7,205.869,39.732,E45_forward_lean,forward,"model_price,margin_with_imports,hour,dayofweek,curtailment_share,firm_utilisation,net_import_share,storage_share",{},105
+lgbm,23.045,0.776,11.231,193.384,30.377,E45_forward_lean,forward,"model_price,margin_with_imports,hour,dayofweek,curtailment_share,firm_utilisation,net_import_share,storage_share",{},105
+pypsa,20.939,0.729,7.666,187.231,39.547,E46_year_bus,year,"model_price,margin_domestic,margin_with_imports,hour,dayofweek,vres_share,curtailment_share,firm_utilisation,net_import_share,storage_share,bus",{},186
+lgbm,18.773,0.785,7.274,175.102,27.914,E46_year_bus,year,"model_price,margin_domestic,margin_with_imports,hour,dayofweek,vres_share,curtailment_share,firm_utilisation,net_import_share,storage_share,bus",{},186
+pypsa,22.939,0.742,8.7,205.869,39.732,E47_forward_bus,forward,"model_price,margin_domestic,margin_with_imports,hour,dayofweek,vres_share,curtailment_share,firm_utilisation,net_import_share,storage_share,bus",{},111
+lgbm,22.881,0.785,10.524,179.129,28.915,E47_forward_bus,forward,"model_price,margin_domestic,margin_with_imports,hour,dayofweek,vres_share,curtailment_share,firm_utilisation,net_import_share,storage_share,bus",{},111

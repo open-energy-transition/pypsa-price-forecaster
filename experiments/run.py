@@ -337,6 +337,16 @@ EXPERIMENTS |= {
         split="forward", features=DEFAULT_FEATURES, models=LGBM, params=MEDIUM
     ),
 }
+# Round 12: larger trees, as small (E80) < medium (E82) < default (E54) on held-out years
+LARGER = {"num_leaves": 127, "min_child_samples": 25, "n_estimators": 1200}
+EXPERIMENTS |= {
+    "E84_year_larger": dict(
+        split="year", features=DEFAULT_FEATURES, models=LGBM, params=LARGER
+    ),
+    "E85_forward_larger": dict(
+        split="forward", features=DEFAULT_FEATURES, models=LGBM, params=LARGER
+    ),
+}
 MODELS = ["pypsa", "bus_bias", "linear", "lgbm"]
 RESULTS_BY_YEAR = Path("experiments/results_by_year.csv")
 RESULTS_BANDS = Path("experiments/results_bands.csv")

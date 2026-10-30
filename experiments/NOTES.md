@@ -381,3 +381,24 @@ E79, forward split (2021–2024): inside 0.64, 0.61, 0.80, 0.78; Brier 0.063 / 0
 - **They miss upwards in regime changes**: 2022 (34 % of hours above the band) and 2021 going forward (29 %), the same years where the point correction fails.
 - **The probability of a price above 150 EUR/MWh from the bands beats the yes/no of the point price in every year.**
 - `ppf report` now writes the 10 and 90 % quantiles to `prices.parquet` and their scores to `band_scores.csv`, and the dashboard shows the band per zone and its calibration per year.
+
+## Round 11: simpler trees (2026-10-30)
+
+Round 1 picked the tree size on the month split. On held-out years:
+
+| id | trees | year | forward |
+|---|---|---|---|
+| E80/E81 | 15 leaves, ≥ 500 rows per leaf, 300 trees | 0.121 / 0.037 | 0.079 / −0.081 |
+| E82/E83 | 31 leaves, ≥ 200 rows per leaf, 500 trees | 0.142 / 0.057 | 0.092 / −0.065 |
+| E54/E55 | default: 63 leaves, ≥ 50 rows per leaf, 800 trees | **0.157 / 0.084** | **0.104 / −0.069** |
+
+Simpler trees carry over to unseen years worse, not better: the 70 % shrink already hedges, and the trees need the detail. Round 12 tries larger ones.
+
+## Round 12: larger trees (2026-10-30)
+
+| id | trees | year | forward |
+|---|---|---|---|
+| E84/E85 | 127 leaves, ≥ 25 rows per leaf, 1200 trees | 0.150 / 0.067 | 0.106 / −0.070 |
+| E54/E55 | default | **0.157 / 0.084** | 0.104 / −0.069 |
+
+Worse on the year split, even forward. **The default tree size is the best of the four sizes** on held-out years.

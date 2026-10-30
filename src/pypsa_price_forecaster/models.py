@@ -193,6 +193,8 @@ class Residual(Forecaster):
 QUANTILES = [round(0.05 * i, 2) for i in range(1, 20)]
 # levels of the predicted price in EUR/MWh within which the band errors are taken
 LEVELS = [-np.inf, 30, 60, 100, 150, 250, np.inf]
+# EUR/MWh, lowest price the relative band errors are taken relative to
+RELATIVE_FLOOR = 20.0
 
 
 def price_level(price: pd.Series) -> pd.Series:
@@ -214,9 +216,11 @@ class Banded(Forecaster):
     The errors (observed minus predicted price) come from refitting the point
     model with each training year left out once and predicting that year, so
     they measure how wrong the model is in a year it has not seen. Their
-    quantiles are taken per bus and level of the predicted price, else per
-    level alone, else over all rows, wherever a group has fewer than
-    `min_rows` rows.
+    quantiles are taken per bus (and with `by_level` per level of the predicted
+    price, else per level alone), else over all rows, wherever a group has
+    fewer than `min_rows` rows. With `relative`, the errors are taken relative
+    to the predicted price (at least `RELATIVE_FLOOR`), so the bands of a bus
+    widen and narrow with its price level, e.g. from a cheap to a crisis year.
     """
 
     def __init__(
@@ -225,14 +229,24 @@ class Banded(Forecaster):
         features: list[str] | None = None,
         params: dict | None = None,
         min_rows: int = 500,
+        relative: bool = True,
+        by_level: bool = False,
     ) -> None:
         self.base = base
         self.features = list(DEFAULT_FEATURES if features is None else features)
         self.params = params
         self.min_rows = min_rows
+        self.relative = relative
+        self.by_level = by_level
 
     def _point_model(self) -> Forecaster:
         return make_model(self.base, self.features, self.params)
+
+    def _scale(self, point: pd.Series) -> pd.Series | float:
+        return point.abs().clip(lower=RELATIVE_FLOOR) if self.relative else 1.0
+
+    def _keys(self) -> list[str]:
+        return ["bus", "level"] if self.by_level else ["bus"]
 
     def _fit(self, table: pd.DataFrame, rows: pd.DataFrame) -> None:
         years = sorted(rows.year.unique())
@@ -249,13 +263,13 @@ class Banded(Forecaster):
                     {
                         "bus": scored.bus.astype(str),
                         "level": price_level(predicted),
-                        "error": scored[TARGET] - predicted,
+                        "error": (scored[TARGET] - predicted) / self._scale(predicted),
                     }
                 )
             )
         errors = pd.concat(errors)
-        self.by_bus = error_quantiles(errors, ["bus", "level"], self.min_rows)
-        self.by_level = error_quantiles(errors, ["level"], self.min_rows)
+        self.by_bus = error_quantiles(errors, self._keys(), self.min_rows)
+        self.by_price = error_quantiles(errors, ["level"], self.min_rows)
         self.overall = errors.error.quantile(QUANTILES)
         self.model = self._point_model().fit(table)
 
@@ -269,12 +283,11 @@ class Banded(Forecaster):
             {"bus": table.bus.astype(str), "level": price_level(point)},
             index=table.index,
         )
-        offsets = (
-            keys.join(self.by_bus, on=["bus", "level"])[QUANTILES]
-            .fillna(keys.join(self.by_level, on="level")[QUANTILES])
-            .fillna(self.overall)
-        )
-        return offsets.add(point, axis=0)
+        offsets = keys.join(self.by_bus, on=self._keys())[QUANTILES]
+        if self.by_level:
+            offsets = offsets.fillna(keys.join(self.by_price, on="level")[QUANTILES])
+        offsets = offsets.fillna(self.overall)
+        return offsets.mul(self._scale(point), axis=0).add(point, axis=0)
 
 
 def make_model(

@@ -289,3 +289,72 @@ All three apply the whole correction (no shrink). Mean / worst skill per held-ou
 - **Every point model that gets closer to spikes pays for it in normal hours.** Spike weighting cuts the top-5 % error by a fifth but raises the MAE of 2023 from 21 to 30. The 90th percentile is, as expected, not a point forecast.
 - **asinh is a weaker version of the shrink**: it compresses large corrections, but less well than applying 70 % of the correction.
 - **None replaces the default.** The tail is better served by bands around the point price (round 7) than by bending the point price towards spikes.
+
+## Round 7: two cheap features and price bands (2026-10-29)
+
+The two features ranked first by a data check (partial correlation with the residual, per year, see HANDOVER.md) that need no re-extraction:
+- `spread_europe`: model price minus the median model price over all zones in the same hour. If the model has a zone cheap next to its neighbours, coupling pulls the real price up.
+- `vres_share_week`: mean renewable share of the past 168 hours. Long low-wind spells drain storage and hydro.
+
+| id | features | year | forward |
+|---|---|---|---|
+| E54/E55 | default (13) | 0.157 / 0.084 | 0.104 / −0.069 |
+| E62/E63 | + `spread_europe` | 0.157 / 0.092 | **0.114 / −0.010** |
+| E64/E65 | + `vres_share_week` | 0.156 / 0.069 | 0.111 / −0.045 |
+
+- **`spread_europe` is a candidate default**: no worse on the year split and better forward, where the worst year goes from −6.9 % to −1 %.
+- `vres_share_week` is mixed: slightly better forward, slightly worse on the year split.
+
+### Price bands
+
+`Banded` takes the point price of `lgbm` plus quantiles (5 % to 95 %) of its error in years it did not see: the point model is refitted with each training year left out once. Scored per held-out year by the share of hours inside the 10–90 % band (0.8 if calibrated), the mean pinball loss over the quantiles against the point price used as every quantile, and the Brier score of the probability of a price above 150 EUR/MWh.
+
+E66, year split, errors per zone and level of the predicted price in EUR/MWh:
+
+| | 2019 | 2020 | 2021 | 2022 | 2023 | 2024 |
+|---|---|---|---|---|---|---|
+| inside 10–90 % | 0.91 | 0.92 | 0.79 | 0.61 | 0.78 | 0.69 |
+| width 10–90 %, EUR/MWh | 35 | 40 | 79 | 137 | 91 | 55 |
+| pinball bands / point | 3.8 / 3.3 | 3.2 / 3.6 | 8.3 / 10.4 | 32.3 / 40.1 | 9.2 / 9.6 | 7.7 / 9.8 |
+| Brier > 150, bands / point | – | – | 0.043 / 0.060 | 0.128 / 0.168 | 0.084 / 0.091 | 0.042 / 0.053 |
+
+Pinball skill 0.108 mean, −0.131 worst (year); 0.084 / −0.007 forward (E67, 2021–2024: 2020 has a single training year). The bands are too wide in calm years and too narrow in 2022.
+
+A post-hoc comparison on the E66 predictions (leave one year out over the out-of-sample errors, the same small leak for every variant) favours errors **relative to the predicted price, per zone, without price levels**: pinball skill 0.151 mean and +0.038 worst, against 0.069 / −0.067 for the E66 method. The levels cut the data too thin. A relative band carries over from cheap to expensive years. This is now the `Banded` default, tested properly in E78/E79.
+
+## Round 8: the daily level and seed bagging (2026-10-29)
+
+An oracle check on `report/prices.parquet` (cheating with the observed price) bounds what a level correction could reach on top of `lgbm`, as mean skill over the six years: perfect zone-year level 0.23, zone-month 0.36, zone-day 0.54. Most of the remaining error is in the level of each day, so this round tries to give the model the day.
+
+| id | change | year | forward |
+|---|---|---|---|
+| E54/E55 | default (13) | 0.157 / 0.084 | 0.104 / −0.069 |
+| E68/E69 | + daily mean of margin with imports, renewable share, firm utilisation, gas price-setter share | 0.161 / 0.074 | 0.103 / −0.074 |
+| E70/E71 | + share of zones where gas sets the price that hour | 0.144 / 0.061 | 0.078 / −0.093 |
+| E72/E73 | `lgbm_bag`, the mean of five seeds | 0.158 / 0.069 | 0.106 / −0.066 |
+
+- **Daily summaries of the network do not carry the daily level.** The model already sees the hours of the day; averaging them adds nothing.
+- **The Europe gas-setter share hurts**: it mostly encodes the fuel regime of each year.
+- **Seed bagging is within the noise** at five times the cost.
+- Nothing changes the defaults. With the oracle bounds above, a 50 % cut of the MAE is out of reach by correcting the backcast as it is; the backcast itself has to get closer first (round 9).
+
+## Round 9: 2022 from the backcast with the fixes of issue #26 (2026-10-29)
+
+The 2022 backcast was rerun upstream (pypsa-eur-backcast `feat/backcast-2022`, commit 492689d6: monthly coal, lignite, biomass and waste availability, daily gas, reservoir hold-back). Its raw median MAE falls from 92.4 to 59.4 and gas sets the model price in 61 % of hours instead of 28 %. The table is in `data/tables-issue26/`, the other five years are unchanged.
+
+Skill is given against the raw price of the same tables ("own") and against the original raw backcast, which shows the upstream and the correction gain together.
+
+| id | 2022 | features | year, own | year, vs original | forward, own | forward, vs original |
+|---|---|---|---|---|---|---|
+| E54/E55 | old | default | 0.157 / 0.084 | 0.157 / 0.084 | 0.104 / −0.069 | 0.104 / −0.069 |
+| E62/E63 | old | + `spread_europe` | 0.157 / 0.092 | 0.157 / 0.092 | 0.114 / −0.010 | 0.114 / −0.010 |
+| E74/E75 | issue #26 | default | 0.106 / −0.042 | **0.168** / 0.088 | 0.048 / −0.131 | **0.129** / −0.069 |
+| E76/E77 | issue #26 | + `spread_europe` | 0.097 / −0.072 | 0.161 / 0.070 | 0.042 / −0.229 | 0.130 / −0.010 |
+
+MAE of the corrected price per held-out year, year split: old 2022 `6.6, 7.2, 20.8, 80.2, 19.3, 19.6`; issue #26 `7.2, 7.0, 23.4, 61.9, 18.5, 20.0`.
+
+- **The upstream fix is worth more than any correction tried here**: the 2022 MAE drops from 80 (corrected) to 59 (raw).
+- **The correction now makes 2022 worse** (59.4 raw, 61.9 corrected, 67.2 trained on 2019–2021 only): the other years still teach it to raise prices that the fixed 2022 no longer underprices.
+- **2021 loses most of its gain** (corrected 20.8 → 23.4). Its fourth quarter underprices like the old 2022, which used to teach the correction. Fixed and unfixed years in one training set contradict each other.
+- **`spread_europe` only helped through the old 2022** and does not become a default.
+- Next: retrain once every year is rerun with the same upstream fixes, so the correction learns from consistent backcasts.

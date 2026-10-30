@@ -15,7 +15,9 @@ from pypsa_price_forecaster.evaluate import (
 from pypsa_price_forecaster.models import (
     DEFAULT_MODELS,
     QUANTILES,
+    RELATIVE_FLOOR,
     TRANSFORMS,
+    Banded,
     labelled,
     load,
     make_model,
@@ -203,3 +205,15 @@ def test_seed_bag_averages_several_fits(table, small_lgbm):
     model = make_model("lgbm_bag", features, {"n_estimators": 50}).fit(table)
     assert len(model.estimator.estimators_) == 5
     assert np.isfinite(model.predict(table)).all()
+
+
+def test_relative_bands_scale_with_the_price_level(table, small_lgbm):
+    features = ["model_price", "margin_with_imports"]
+    train = table[table.year < 2023]
+    model = Banded("lgbm", features, min_rows=50).fit(train)
+    test = table[table.year == 2023]
+    width = model.quantiles(test)[0.9] - model.quantiles(test)[0.1]
+    point = model.predict(test)
+    ratio = width / point.abs().clip(lower=RELATIVE_FLOOR)
+    # one relative width per bus
+    assert (ratio.round(9).groupby(test.bus).nunique() == 1).all()

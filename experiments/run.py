@@ -257,14 +257,18 @@ EXPERIMENTS |= {
 # Round 7: the two features the data check ranked first (no re-extraction), and
 # price bands from the out-of-sample error quantiles of lgbm
 SPREAD = DEFAULT_FEATURES + ["spread_europe"]
+ABSOLUTE = dict(relative=False, by_level=True)
 VRES_WEEK = DEFAULT_FEATURES + ["vres_share_week"]
 EXPERIMENTS |= {
     "E62_year_spread": dict(split="year", features=SPREAD, models=LGBM),
     "E63_forward_spread": dict(split="forward", features=SPREAD, models=LGBM),
     "E64_year_vres_week": dict(split="year", features=VRES_WEEK, models=LGBM),
     "E65_forward_vres_week": dict(split="forward", features=VRES_WEEK, models=LGBM),
-    "E66_year_bands": dict(split="year", features=DEFAULT_FEATURES, bands=True),
-    "E67_forward_bands": dict(split="forward", features=DEFAULT_FEATURES, bands=True),
+    # errors per zone and level of the predicted price, in EUR/MWh
+    "E66_year_bands": dict(split="year", features=DEFAULT_FEATURES, bands=ABSOLUTE),
+    "E67_forward_bands": dict(
+        split="forward", features=DEFAULT_FEATURES, bands=ABSOLUTE
+    ),
 }
 # Round 8: the daily level, where an oracle check puts most of the remaining error
 DAILY = DEFAULT_FEATURES + [
@@ -286,6 +290,53 @@ EXPERIMENTS |= {
         split="forward", features=DEFAULT_FEATURES, models=["pypsa", "lgbm_bag"]
     ),
 }
+# Round 9: 2022 from the backcast run with the fixes of issue #26 (monthly fossil
+# availability, daily gas, reservoir hold-back), other years unchanged
+ISSUE26 = {"backcast-2022": Path("data/tables-issue26/backcast-2022.parquet")}
+EXPERIMENTS |= {
+    "E74_year_issue26": dict(
+        split="year", features=DEFAULT_FEATURES, models=LGBM, tables=ISSUE26
+    ),
+    "E75_forward_issue26": dict(
+        split="forward", features=DEFAULT_FEATURES, models=LGBM, tables=ISSUE26
+    ),
+    "E76_year_issue26_spread": dict(
+        split="year", features=SPREAD, models=LGBM, tables=ISSUE26
+    ),
+    "E77_forward_issue26_spread": dict(
+        split="forward", features=SPREAD, models=LGBM, tables=ISSUE26
+    ),
+}
+# errors per zone relative to the predicted price, best in a post-hoc comparison
+# on the E66 predictions (experiments/NOTES.md)
+EXPERIMENTS |= {
+    "E78_year_bands_relative": dict(split="year", features=DEFAULT_FEATURES, bands={}),
+    "E79_forward_bands_relative": dict(
+        split="forward", features=DEFAULT_FEATURES, bands={}
+    ),
+}
+# Round 11: simpler trees, never tested on held-out years (E13 used the month split)
+SMALL = {
+    "num_leaves": 15,
+    "min_child_samples": 500,
+    "n_estimators": 300,
+    "learning_rate": 0.05,
+}
+MEDIUM = {"num_leaves": 31, "min_child_samples": 200, "n_estimators": 500}
+EXPERIMENTS |= {
+    "E80_year_small": dict(
+        split="year", features=DEFAULT_FEATURES, models=LGBM, params=SMALL
+    ),
+    "E81_forward_small": dict(
+        split="forward", features=DEFAULT_FEATURES, models=LGBM, params=SMALL
+    ),
+    "E82_year_medium": dict(
+        split="year", features=DEFAULT_FEATURES, models=LGBM, params=MEDIUM
+    ),
+    "E83_forward_medium": dict(
+        split="forward", features=DEFAULT_FEATURES, models=LGBM, params=MEDIUM
+    ),
+}
 MODELS = ["pypsa", "bus_bias", "linear", "lgbm"]
 RESULTS_BY_YEAR = Path("experiments/results_by_year.csv")
 RESULTS_BANDS = Path("experiments/results_bands.csv")
@@ -295,6 +346,9 @@ COLUMNS = ["mae", "r", "abs_bias", "mae_top5", "mae_low5"]
 def run(name: str, table: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Return the scores of experiment `name` over all years and per year."""
     spec = {"folds": 4, "models": MODELS} | EXPERIMENTS[name]
+    if "tables" in spec:
+        # runs replaced by the tables of other backcast runs
+        table = read_tables([spec["tables"].get(path.stem, path) for path in TABLES])
     table = table[~table.year.isin(spec.get("exclude_years", []))]
     start = time.time()
     predictions = cross_validate(
@@ -333,7 +387,9 @@ def run_bands(name: str, table: pd.DataFrame) -> pd.DataFrame:
     """Return the band scores per held-out year of experiment `name`, keeping the bands in ``results/``."""
     spec = EXPERIMENTS[name]
     start = time.time()
-    bands = cross_validate_bands(table, "lgbm", spec["features"], spec["split"])
+    bands = cross_validate_bands(
+        table, "lgbm", spec["features"], spec["split"], **spec["bands"]
+    )
     seconds = round(time.time() - start)
     Path("results").mkdir(exist_ok=True)
     table[["run", "year", "snapshot", "bus", TARGET]].join(bands).dropna(
@@ -350,7 +406,7 @@ def run_bands(name: str, table: pd.DataFrame) -> pd.DataFrame:
 if __name__ == "__main__":
     table = read_tables(TABLES)
     for name in sys.argv[1:]:
-        if EXPERIMENTS[name].get("bands"):
+        if "bands" in EXPERIMENTS[name]:
             result = run_bands(name, table)
             print(f"\n== {name}")
             print(result.drop(columns="experiment").to_string(index=False))

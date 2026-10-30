@@ -178,11 +178,12 @@ def cross_validate_bands(
     features: list[str] | None = None,
     split: str = "year",
     params: dict | None = None,
+    **options,
 ) -> pd.DataFrame:
     """
     Return the out-of-sample point price (``point``) and price quantiles (one column per `QUANTILES`) of every row.
 
-    Uses :class:`Banded` models over the ``year`` or ``forward`` split. Folds
+    Uses :class:`Banded` models with `options` over the ``year`` or ``forward`` split. Folds
     with fewer than two training years have no prediction.
     """
     if split not in ("year", "forward"):
@@ -198,7 +199,7 @@ def cross_validate_bands(
             )
             continue
         logger.info(f"Predicting bands of {split} fold {label} with {base}.")
-        model = Banded(base, features, params).fit(table[train])
+        model = Banded(base, features, params, **options).fit(table[train])
         result.loc[test, "point"] = model.predict(table[test])
         result.loc[test, QUANTILES] = model.quantiles(table[test]).to_numpy()
     return result

@@ -160,9 +160,17 @@ def report(
             help="Refit lgbm without and with each feature and with other seeds."
         ),
     ] = True,
+    bands: Annotated[
+        bool,
+        typer.Option(
+            help="Add price bands, refitting lgbm per pair of held-out years."
+        ),
+    ] = True,
 ) -> None:
     """Write the report of the default models that the dashboard shows."""
-    scores = write_report(read_tables(tables), out_dir, split, with_ablation=ablation)
+    scores = write_report(
+        read_tables(tables), out_dir, split, with_ablation=ablation, with_bands=bands
+    )
     typer.echo(f"Wrote the report to {out_dir}. Median over buses, out of sample:")
     typer.echo(scores.round(3).to_string())
 

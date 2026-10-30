@@ -629,3 +629,15 @@ year,model,mae,r,abs_bias,mae_top5,mae_low5,experiment,split
 2023,lgbm,20.133,0.786,5.236,34.691,37.235,E77_forward_issue26_spread,forward
 2024,pypsa,22.939,0.68,10.754,75.336,32.259,E77_forward_issue26_spread,forward
 2024,lgbm,19.619,0.755,10.592,67.316,24.847,E77_forward_issue26_spread,forward
+2019,pypsa,7.891,0.707,4.908,16.244,23.858,E80_year_small,year
+2019,lgbm,6.721,0.741,2.776,14.059,16.846,E80_year_small,year
+2020,pypsa,9.365,0.753,6.253,16.442,26.263,E80_year_small,year
+2020,lgbm,7.269,0.79,1.989,15.669,15.168,E80_year_small,year
+2021,pypsa,25.699,0.917,7.825,108.319,34.944,E80_year_small,year
+2021,lgbm,21.818,0.923,8.269,87.033,24.734,E80_year_small,year
+2022,pypsa,92.435,0.533,70.9,350.127,76.358,E80_year_small,year
+2022,lgbm,83.613,0.558,61.957,334.343,72.16,E80_year_small,year
+2023,pypsa,21.029,0.752,6.672,39.706,46.685,E80_year_small,year
+2023,lgbm,20.255,0.776,7.466,36.626,37.053,E80_year_small,year
+2024,pypsa,22.939,0.68,10.754,75.336,32.259,E80_year_small,year
+2024,lgbm,21.283,0.732,11.499,70.724,25.451,E80_year_small,year

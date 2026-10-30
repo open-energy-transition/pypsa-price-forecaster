@@ -117,6 +117,7 @@ class Report:
     prices: pd.DataFrame
     history: pd.DataFrame
     price_setters: pd.DataFrame | None
+    band_scores: pd.DataFrame | None = None
 
     @property
     def noise(self) -> float:
@@ -151,6 +152,9 @@ def read_report(path: Path | None = None) -> Report | None:
         history=pd.read_csv(path / "history.csv", parse_dates=["created"]),
         price_setters=pd.read_csv(path / "price_setters.csv")
         if (path / "price_setters.csv").exists()
+        else None,
+        band_scores=pd.read_csv(path / "band_scores.csv", index_col="year")
+        if (path / "band_scores.csv").exists()
         else None,
     )
 

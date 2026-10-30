@@ -24,6 +24,7 @@ from dashboard.data import (
 
 MODELS = ["pypsa", "lgbm"]
 PRICES = ["observed_price", *MODELS]
+BANDS = ["lgbm_q10", "lgbm_q90"]
 SCORE_COLUMNS = {
     "mae": "MAE",
     "r": "r",
@@ -147,12 +148,50 @@ def overview() -> None:
             width="stretch",
         )
 
+    if report.band_scores is not None:
+        band_table(report.band_scores)
+
     st.subheader("Progress over reports")
     if len(report.history) > 1:
         st.plotly_chart(charts.history_lines(report.history), width="stretch")
     st.caption(
         "Every `ppf report` adds a point, so this shows how the default model "
         "changed with the code and runs on master."
+    )
+
+
+def band_table(scores: pd.DataFrame) -> None:
+    """Calibration and skill of the price bands per held-out year."""
+    st.subheader("How reliable are the price bands?")
+    table = pd.DataFrame(
+        {
+            "inside 10-90 %": scores.coverage_80,
+            "above": scores.above_90,
+            "below": scores.below_10,
+            "width (EUR/MWh)": scores.width_80,
+            "pinball skill": 1 - scores.pinball / scores.pinball_point,
+            "Brier > 150, bands": scores.brier,
+            "Brier > 150, point": scores.brier_point,
+        }
+    )
+    st.dataframe(
+        table.style.format(
+            {
+                **dict.fromkeys(["inside 10-90 %", "above", "below"], "{:.0%}"),
+                "width (EUR/MWh)": "{:.0f}",
+                "pinball skill": "{:+.0%}",
+                **dict.fromkeys(["Brier > 150, bands", "Brier > 150, point"], "{:.3f}"),
+            }
+        ),
+        width="stretch",
+    )
+    st.caption(
+        "Besides the corrected price, the model gives a band from its errors in years "
+        "it did not see. Calibrated bands hold 80 % of hours, 10 % above and 10 % "
+        "below. Pinball skill compares the band with the corrected price alone over "
+        "every quantile, so above zero the band adds information. The Brier score "
+        "rates the probability of a price above 150 EUR/MWh, lower is better. Medians "
+        "over zones."
     )
 
 
@@ -275,7 +314,8 @@ def zone_prices(run: str, bus: str) -> pd.DataFrame:
     """Hourly market, PyPSA and corrected price of one zone in one run."""
     prices = cached_report().prices
     rows = prices[(prices.run == run) & (prices.bus == bus)]
-    return rows.set_index("snapshot")[PRICES].sort_index()
+    columns = PRICES + [c for c in BANDS if c in prices]
+    return rows.set_index("snapshot")[columns].sort_index()
 
 
 def duration_table(prices: pd.DataFrame, points: int = 501) -> pd.DataFrame:
@@ -361,12 +401,16 @@ def prices() -> None:
     )
     right.subheader("Typical day")
     right.plotly_chart(
-        charts.typical_day(hourly.groupby(hourly.index.hour).mean()), width="stretch"
+        charts.typical_day(hourly[PRICES].groupby(hourly.index.hour).mean()),
+        width="stretch",
     )
     right.caption(
         "Mean price at every hour of the day, in UTC. Look at the shape, such as the "
         "morning and evening peaks and the midday dip where there is much solar."
     )
+
+    if set(BANDS) <= set(hourly):
+        band_section(hourly, labels[bus])
 
     if report.price_setters is not None:
         st.subheader("What sets the model price")
@@ -390,7 +434,7 @@ def prices() -> None:
         )
 
     st.subheader("Model against market, hour by hour")
-    edges = np.linspace(*np.quantile(hourly.to_numpy(), [0.005, 0.995]), 61)
+    edges = np.linspace(*np.quantile(hourly[PRICES].to_numpy(), [0.005, 0.995]), 61)
     densities = {m: density_table(hourly, m, edges) for m in MODELS}
     zmax = max(d.to_numpy().max() for d in densities.values())
     for column, model in zip(st.columns(2), MODELS, strict=True):
@@ -406,6 +450,31 @@ def prices() -> None:
         "(up), darker cells hold more hours. The closer the cells hug the dashed "
         "line, the closer the model is to the market. The most extreme 1 % of "
         "prices falls outside the axes."
+    )
+
+
+def band_section(hourly: pd.DataFrame, zone: str) -> None:
+    """Price bands of one zone and run: one month of hours and the share inside."""
+    st.subheader("How sure is the corrected price?")
+    observed = hourly.observed_price
+    inside = (hourly.lgbm_q10 <= observed) & (observed <= hourly.lgbm_q90)
+    above, below = (
+        (observed > hourly.lgbm_q90).mean(),
+        (observed < hourly.lgbm_q10).mean(),
+    )
+    months = hourly.index.to_period("M")
+    names = [m.strftime("%B") for m in months.unique()]
+    default = months[observed.groupby(months).transform("mean").argmax()].strftime("%B")
+    month = st.selectbox("Month", names, index=names.index(default), key="band_month")
+    shown = hourly[months.strftime("%B") == month]
+    st.plotly_chart(charts.band_lines(shown), width="stretch")
+    st.caption(
+        "The band spans the 10 % to the 90 % quantile of the corrected price: the "
+        "errors the model made in years it did not see, relative to its price, per "
+        "zone. If the band is right, the market sits inside it in 80 % of hours. "
+        f"In {zone} this year it was inside in **{inside.mean():.0%}**, above in "
+        f"**{above:.0%}** and below in **{below:.0%}** of hours. The month shown "
+        "first has the highest market price."
     )
 
 

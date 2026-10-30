@@ -358,3 +358,26 @@ MAE of the corrected price per held-out year, year split: old 2022 `6.6, 7.2, 20
 - **2021 loses most of its gain** (corrected 20.8 → 23.4). Its fourth quarter underprices like the old 2022, which used to teach the correction. Fixed and unfixed years in one training set contradict each other.
 - **`spread_europe` only helped through the old 2022** and does not become a default.
 - Next: retrain once every year is rerun with the same upstream fixes, so the correction learns from consistent backcasts.
+
+## Round 10: relative price bands (2026-10-30)
+
+`Banded` now takes the errors relative to the predicted price (at least 20 EUR/MWh), per zone, with no price levels, as the post-hoc comparison of round 7 suggested.
+
+| | year (E66 → E78) | forward (E67 → E79) |
+|---|---|---|
+| pinball skill, mean / worst | 0.108 / −0.131 → **0.151 / 0.031** | 0.084 / −0.007 → **0.169 / 0.155** |
+
+E78, year split:
+
+| | 2019 | 2020 | 2021 | 2022 | 2023 | 2024 |
+|---|---|---|---|---|---|---|
+| inside 10–90 % | 0.94 | 0.83 | 0.85 | 0.57 | 0.82 | 0.78 |
+| width 10–90 %, EUR/MWh | 38 | 29 | 80 | 126 | 79 | 61 |
+| Brier > 150, bands / point | – | – | 0.051 / 0.060 | 0.132 / 0.168 | 0.065 / 0.091 | 0.040 / 0.053 |
+
+E79, forward split (2021–2024): inside 0.64, 0.61, 0.80, 0.78; Brier 0.063 / 0.091, 0.116 / 0.151, 0.071 / 0.092, 0.040 / 0.053.
+
+- **The bands beat the point price in every held-out year on both splits.** Coverage is near the nominal 80 % in normal years.
+- **They miss upwards in regime changes**: 2022 (34 % of hours above the band) and 2021 going forward (29 %), the same years where the point correction fails.
+- **The probability of a price above 150 EUR/MWh from the bands beats the yes/no of the point price in every year.**
+- `ppf report` now writes the 10 and 90 % quantiles to `prices.parquet` and their scores to `band_scores.csv`, and the dashboard shows the band per zone and its calibration per year.

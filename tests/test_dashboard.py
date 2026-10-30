@@ -39,5 +39,5 @@ def test_every_page_renders(report_dir):
         "from dashboard.views import prices\nprices()", default_timeout=60
     ).run()
     assert app.selectbox(key="prices_zone").value == (mae.pypsa - mae.lgbm).idxmax()
-    # mean per zone, duration curve, typical day, setter chart, 2 heatmaps
-    assert len(app.get("plotly_chart")) == 6
+    # mean per zone, duration curve, typical day, bands, setter chart, 2 heatmaps
+    assert len(app.get("plotly_chart")) == 7

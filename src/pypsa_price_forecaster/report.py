@@ -16,7 +16,11 @@ the branch ``master`` always shows the latest results:
 - ``ablation.csv``: scores of ``lgbm`` without or with each feature
 - ``importance.csv``: share of the split gain per feature of ``lgbm`` fitted on all rows
 - ``price_setters.csv``: share of hours per run, bus and technology setting the model price
-- ``prices.parquet``: observed, PyPSA and out-of-sample ``lgbm`` price per hour and bus
+- ``prices.parquet``: observed, PyPSA and out-of-sample ``lgbm`` price per hour and
+  bus, and the 10 and 90 % quantiles of the price bands (``lgbm_q10``, ``lgbm_q90``)
+- ``band_scores.csv``: scores of the price bands per year, see
+  :func:`pypsa_price_forecaster.evaluate.band_scores`; the bands need the year
+  split and three or more years
 - ``history.csv``: headline scores of every report written, one row appended per report
 """
 
@@ -32,8 +36,10 @@ from lightgbm import LGBMRegressor
 from pypsa_price_forecaster import __version__
 from pypsa_price_forecaster.dataset import DEFAULT_FEATURES, FEATURES, TARGET
 from pypsa_price_forecaster.evaluate import (
+    band_scores,
     bus_metrics,
     cross_validate,
+    cross_validate_bands,
     fold_labels,
     scores,
 )
@@ -42,6 +48,7 @@ from pypsa_price_forecaster.models import DEFAULT_MODELS, labelled, make_model
 logger = logging.getLogger(__name__)
 
 SEEDS = [1, 2]
+BAND_COLUMNS = ["lgbm_q10", "lgbm_q90"]
 
 
 def default_split(table: pd.DataFrame) -> str:
@@ -143,17 +150,24 @@ def importance(table: pd.DataFrame, features: list[str]) -> pd.Series:
     return (gain / gain.sum()).sort_values(ascending=False).rename("gain_share")
 
 
-def prices(table: pd.DataFrame, predictions: pd.DataFrame) -> pd.DataFrame:
+def prices(
+    table: pd.DataFrame,
+    predictions: pd.DataFrame,
+    bands: pd.DataFrame | None = None,
+) -> pd.DataFrame:
     """
-    Return the observed, PyPSA and ``lgbm`` price of the rows with observed price.
+    Return the observed, PyPSA and ``lgbm`` price of the rows with observed price, with the 10 and 90 % quantiles of `bands`.
 
     Rounded to 0.1 EUR/MWh, which shrinks the compressed file to a size fit for git.
     """
     rows = table[["run", "snapshot", "bus", TARGET]].join(
         predictions[["pypsa", "lgbm"]]
     )
-    rows = rows.dropna(subset=[TARGET]).reset_index(drop=True)
     values = [TARGET, "pypsa", "lgbm"]
+    if bands is not None:
+        rows = rows.join(bands[[0.1, 0.9]].set_axis(BAND_COLUMNS, axis=1))
+        values += BAND_COLUMNS
+    rows = rows.dropna(subset=[TARGET]).reset_index(drop=True)
     rows[values] = rows[values].round(1).astype("float32")
     return rows.astype({"run": "category", "bus": "category"})
 
@@ -165,6 +179,7 @@ def write_report(
     folds: int = 4,
     features: list[str] | None = None,
     with_ablation: bool = True,
+    with_bands: bool = True,
 ) -> pd.DataFrame:
     """
     Write the report of the default models on `table` to the directory `out` and return the scores.
@@ -184,6 +199,9 @@ def write_report(
     with_ablation : bool
         Whether to run the feature ablation and the seed repeats, which refit
         ``lgbm`` once per feature.
+    with_bands : bool
+        Whether to add the price bands, which refit ``lgbm`` once per pair of
+        held-out years. Only with the year split and three or more years.
     """
     out = Path(out)
     out.mkdir(parents=True, exist_ok=True)
@@ -192,12 +210,18 @@ def write_report(
     features = list(DEFAULT_FEATURES if features is None else features)
 
     predictions = cross_validate(table, DEFAULT_MODELS, features, split, folds)
+    bands = None
+    if with_bands and split == "year" and table.year.nunique() >= 3:
+        bands = cross_validate_bands(table, "lgbm", features, split)
+        band_scores(table, bands).round(3).to_csv(out / "band_scores.csv")
+    else:
+        (out / "band_scores.csv").unlink(missing_ok=True)
     result = scores(table, predictions)
     result.to_csv(out / "scores.csv", index_label="model")
     by_year(table, predictions).to_csv(out / "scores_by_year.csv")
     bus_metrics(table, predictions).to_csv(out / "bus_metrics.csv")
     monthly(table, predictions).to_csv(out / "monthly.csv")
-    prices(table, predictions).to_parquet(
+    prices(table, predictions, bands).to_parquet(
         out / "prices.parquet", compression="zstd", compression_level=19
     )
     importance(table, features).to_csv(out / "importance.csv", index_label="feature")
@@ -234,6 +258,7 @@ def write_report(
         "features": features,
         "lgbm_params": lgbm_params(),
         "seed_mae": [round(float(m), 4) for m in seed_mae],
+        "bands": bands is not None,
     }
     (out / "meta.json").write_text(json.dumps(meta, indent=2) + "\n")
 

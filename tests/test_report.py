@@ -33,6 +33,12 @@ def test_write_report(table, tmp_path, monkeypatch, small_lgbm):
 
     prices = pd.read_parquet(tmp_path / "prices.parquet")
     assert len(prices) == table.observed_price.notna().sum()
+    # bands for every year with two other training years
+    assert prices[report.BAND_COLUMNS].notna().all().all()
+    assert (prices.lgbm_q10 <= prices.lgbm_q90).all()
+    bands = pd.read_csv(tmp_path / "band_scores.csv", index_col="year")
+    assert bands.index.tolist() == [2019, 2021, 2023]
+    assert meta["bands"]
     assert set(pd.read_csv(tmp_path / "monthly.csv").model) == set(scores.index)
     assert len(pd.read_csv(tmp_path / "history.csv")) == 2
     assert (tmp_path / "price_setters.csv").exists()
@@ -42,6 +48,16 @@ def test_write_report(table, tmp_path, monkeypatch, small_lgbm):
         2021,
         2023,
     ]
+
+
+def test_report_without_bands_removes_old_band_scores(table, tmp_path, small_lgbm):
+    features = ["model_price", "margin_with_imports"]
+    (tmp_path / "band_scores.csv").write_text("year\n")
+    report.write_report(
+        table, tmp_path, features=features, with_ablation=False, with_bands=False
+    )
+    assert not (tmp_path / "band_scores.csv").exists()
+    assert "lgbm_q10" not in pd.read_parquet(tmp_path / "prices.parquet")
 
 
 def test_default_split_falls_back_to_month_and_week(table):

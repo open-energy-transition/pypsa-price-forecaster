@@ -24,6 +24,7 @@ HURTS_COLOR = "#D55E00"
 NOISE_COLOR = "#BBBBBB"
 GAIN_COLOR = "#0072B2"
 CONNECTOR_COLOR = "#D5DCE4"
+BAND_COLOR = "rgba(230, 159, 0, 0.25)"
 ROW_HEIGHT = 22
 PRICE_SERIES = [
     ("observed_price", "Market", OBSERVED_COLOR),
@@ -216,6 +217,41 @@ def duration_curves(curves: pd.DataFrame) -> go.Figure:
         title="share of hours at a higher price", tickformat=".0%", hoverformat=".1%"
     )
     return fig
+
+
+def band_lines(prices: pd.DataFrame) -> go.Figure:
+    """Market and corrected price with the 10-90 % band of the corrected price, indexed by hour."""
+    fig = go.Figure()
+    fig.add_scatter(
+        x=prices.index,
+        y=prices.lgbm_q90,
+        mode="lines",
+        line=dict(width=0),
+        showlegend=False,
+        hoverinfo="skip",
+    )
+    fig.add_scatter(
+        x=prices.index,
+        y=prices.lgbm_q10,
+        name="10-90 % band",
+        mode="lines",
+        line=dict(width=0),
+        fill="tonexty",
+        fillcolor=BAND_COLOR,
+        customdata=prices.lgbm_q90,
+        hovertemplate="%{y:.1f} to %{customdata:.1f} EUR/MWh<extra>band</extra>",
+    )
+    for column, name, color in [PRICE_SERIES[2], PRICE_SERIES[0]]:
+        fig.add_scatter(
+            x=prices.index,
+            y=prices[column],
+            name=name,
+            mode="lines",
+            line=dict(color=color, width=1.5),
+            hovertemplate="%{y:.1f} EUR/MWh<extra>%{fullData.name}</extra>",
+        )
+    fig.update_yaxes(title="EUR/MWh")
+    return layout(fig, hovermode="x unified")
 
 
 def typical_day(profile: pd.DataFrame) -> go.Figure:

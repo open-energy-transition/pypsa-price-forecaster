@@ -4,6 +4,25 @@ Written 2026-10-29 for whoever (human or agent) picks this up next. The user's h
 reaction after round 5: *"performance still does not seem that good."* They're right
 to push on this — read the "Honest assessment" section before doing anything else.
 
+## Update after rounds 6–12 (2026-10-30)
+
+Tier 1 and most of tier 2 below are done; details in `experiments/NOTES.md`.
+- **Point model: nothing beat the defaults.** Spike weighting, asinh target, 90th
+  percentile, Europe spread, 7-day renewables, daily network summaries, Europe gas
+  share, seed bagging, intraday stretch, smaller and larger trees were all within the
+  noise or worse on the year and forward splits.
+- **Price bands are new and work** (`Banded`, round 10): 10–90 % bands from held-out
+  year errors relative to the predicted price, per zone. They beat the point price on
+  pinball loss in every held-out year (mean skill 0.151 year, 0.169 forward). In the
+  report and on the dashboard.
+- **Ceiling:** perfect knowledge of each zone's monthly price level would only reach
+  skill 0.36, daily level 0.54. The user's goal is a 50 % MAE cut, which needs the
+  backcast itself to improve.
+- **Upstream is the lever:** the issue #26 fixes for 2022 (pypsa-eur-backcast
+  `feat/backcast-2022`) cut raw 2022 MAE from 92 to 59, but mixing one fixed year with
+  unfixed ones hurts the correction (round 9). Retrain once every year has the same
+  fixes; the round 9 experiments (`tables=` in `experiments/run.py`) show how.
+
 ## 30-second orientation
 
 - This repo corrects PyPSA model prices from `pypsa-eur-backcast` towards observed

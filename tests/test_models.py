@@ -4,7 +4,7 @@ import pytest
 from typer.testing import CliRunner
 
 from pypsa_price_forecaster.cli import app
-from pypsa_price_forecaster.dataset import TARGET, feature_matrix
+from pypsa_price_forecaster.dataset import TARGET, attach_exogenous, feature_matrix
 from pypsa_price_forecaster.evaluate import (
     band_scores,
     bus_metrics,
@@ -217,3 +217,43 @@ def test_relative_bands_scale_with_the_price_level(table, small_lgbm):
     ratio = width / point.abs().clip(lower=RELATIVE_FLOOR)
     # one relative width per bus
     assert (ratio.round(9).groupby(test.bus).nunique() == 1).all()
+
+
+def test_gas_change_compares_with_the_gas_cost_30_days_before(table):
+    rows = table.sort_values("snapshot")
+    change = feature_matrix(rows, ["gas_change_30d"]).gas_change_30d
+    first = rows.groupby("run").snapshot.transform("min")
+    early = rows.snapshot < first + pd.Timedelta(days=30)
+    assert change[early].isna().all()
+    days = [rows.run, rows.bus, rows.snapshot.dt.date]
+    assert (change.groupby(days).nunique() <= 1).all()
+
+
+def test_exogenous_variables_join_by_bus_and_day(table):
+    days = table.snapshot.dt.floor("D")
+    daily = (
+        pd.DataFrame({"bus": table.bus, "date": days})
+        .drop_duplicates()
+        .assign(temperature=lambda d: d.date.dt.day_of_year.astype(float))
+    )
+    joined = attach_exogenous(table, daily)
+    assert joined.index.equals(table.index)
+    assert (joined.temperature == days.dt.day_of_year).all()
+    with pytest.raises(ValueError, match="ppf exogenous"):
+        feature_matrix(table, ["temperature"])
+    assert feature_matrix(joined, ["hdd"]).hdd.ge(0).all()
+
+
+def test_forecast_errors_compare_with_the_zone_load_and_supply(table):
+    hourly = pd.DataFrame(
+        {
+            "snapshot": table.snapshot,
+            "bus": table.bus,
+            "load_forecast": 1.1 * table.load,
+            "vres_forecast": table.supply_vres,
+        }
+    ).drop_duplicates(["snapshot", "bus"])
+    joined = attach_exogenous(table, hourly)
+    errors = feature_matrix(joined, ["load_forecast_error", "vres_forecast_error"])
+    assert np.allclose(errors.load_forecast_error, 0.1)
+    assert np.allclose(errors.vres_forecast_error, 0)

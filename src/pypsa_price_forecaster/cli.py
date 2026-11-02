@@ -15,6 +15,7 @@ from pypsa_price_forecaster.dataset import (
     DEFAULT_FEATURES,
     FEATURES,
     TARGET,
+    attach_exogenous,
     build_table,
     read_tables,
 )
@@ -40,6 +41,20 @@ Features = Annotated[
         f"Available: {', '.join(FEATURES)}.",
     ),
 ]
+Variables = Annotated[
+    list[Path] | None,
+    typer.Option(
+        "--variables",
+        help="Variables from outside the network written by `exogenous` or `forecasts`, "
+        "needed by their features, repeatable.",
+    ),
+]
+
+
+def with_variables(table: pd.DataFrame, variables: list[Path] | None) -> pd.DataFrame:
+    for path in variables or []:
+        table = attach_exogenous(table, pd.read_parquet(path))
+    return table
 
 
 @app.callback()
@@ -105,6 +120,52 @@ def extract(
     )
 
 
+@app.command("exogenous")
+def exogenous_command(
+    backcast: Annotated[
+        Path,
+        typer.Argument(
+            help="pypsa-eur-backcast checkout with the cutouts and resources."
+        ),
+    ],
+    years: Annotated[
+        list[int], typer.Option("--year", help="Weather year, repeatable.")
+    ],
+    out: Annotated[Path, typer.Option("--out", "-o", help="Output (.parquet).")] = Path(
+        "data/exogenous.parquet"
+    ),
+    cache_dir: Annotated[
+        Path, typer.Option(help="Cache of the ENTSO-E downloads.")
+    ] = Path("data/entsoe"),
+) -> None:
+    """Build daily temperature, runoff and hydro reservoir filling per bus (token in ENTSOE_API_TOKEN)."""
+    from pypsa_price_forecaster.exogenous import build
+
+    daily = build(backcast, years, cache_dir)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    daily.to_parquet(out, index=False)
+    typer.echo(f"Wrote {len(daily)} rows ({daily.bus.nunique()} buses) to {out}")
+
+
+@app.command()
+def forecasts(
+    years: Annotated[list[int], typer.Option("--year", help="Year, repeatable.")],
+    out: Annotated[Path, typer.Option("--out", "-o", help="Output (.parquet).")] = Path(
+        "data/forecasts.parquet"
+    ),
+    cache_dir: Annotated[
+        Path, typer.Option(help="Cache of the ENTSO-E downloads.")
+    ] = Path("data/entsoe"),
+) -> None:
+    """Download the day-ahead load and wind and solar forecasts per bus (token in ENTSOE_API_TOKEN)."""
+    from pypsa_price_forecaster.forecasts import build
+
+    hourly = build(years, cache_dir)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    hourly.to_parquet(out, index=False)
+    typer.echo(f"Wrote {len(hourly)} rows ({hourly.bus.nunique()} buses) to {out}")
+
+
 @app.command()
 def evaluate(
     tables: Tables,
@@ -129,9 +190,10 @@ def evaluate(
     folds: Annotated[
         int, typer.Option(help="Number of folds of the week split.", min=2)
     ] = 4,
+    variables: Variables = None,
 ) -> None:
     """Predict every fold with models fitted on the other folds and score against observed prices."""
-    table = read_tables(tables)
+    table = with_variables(read_tables(tables), variables)
     predictions = cross_validate(table, model or DEFAULT_MODELS, feature, split, folds)
     metrics = bus_metrics(table, predictions)
     scores = summary(metrics)
@@ -190,9 +252,11 @@ def train(
     out: Annotated[Path, typer.Option("--out", "-o", help="Output model (.joblib).")],
     model: Annotated[str, typer.Option("--model", "-m")] = "lgbm",
     feature: Features = None,
+    variables: Variables = None,
 ) -> None:
     """Fit a model on all rows with observed price."""
-    fitted = model_io.make_model(model, feature).fit(read_tables(tables))
+    table = with_variables(read_tables(tables), variables)
+    fitted = model_io.make_model(model, feature).fit(table)
     model_io.save(fitted, out)
     typer.echo(f"Wrote {model} fitted on {', '.join(fitted.trained_on)} to {out}")
 
@@ -206,10 +270,12 @@ def predict(
     out: Annotated[
         Path, typer.Option("--out", "-o", help="Output CSV of naive UTC hours by bus.")
     ],
+    variables: Variables = None,
 ) -> None:
     """Predict hourly day-ahead prices per bus of a solved network."""
-    table = (
-        pd.read_parquet(source) if source.suffix == ".parquet" else build_table(source)
+    table = with_variables(
+        pd.read_parquet(source) if source.suffix == ".parquet" else build_table(source),
+        variables,
     )
     fitted = model_io.load(model)
     prices = (

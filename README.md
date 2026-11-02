@@ -84,6 +84,31 @@ Applying 70 % of the correction hedges against corrections that do not carry ove
 
 To add a feature, add an entry to `FEATURES` in `dataset.py`, plus a column in `network.py` if it needs new data from the network.
 
+### Variables from outside the network
+
+Some features need daily or hourly data the network does not hold. Build them once, then pass them with `--variables` to `evaluate`, `train` and `predict`:
+
+```bash
+# daily temperature and runoff from the backcast's ERA5 cutouts, hydro reservoir filling from ENTSO-E
+pixi run ppf exogenous /path/to/pypsa-eur-backcast --year 2019 --year 2024 -o data/exogenous.parquet
+# hourly day-ahead load and wind and solar forecasts from ENTSO-E
+pixi run ppf forecasts --year 2019 --year 2024 -o data/forecasts.parquet
+
+pixi run ppf evaluate data/tables/*.parquet -o results/eval --variables data/exogenous.parquet \
+    -f model_price ... -f reservoir_anomaly
+```
+
+| feature | definition | source |
+|---|---|---|
+| `reservoir_anomaly` | hydro reservoir filling of the country as share of its 2015–2018 maximum, minus the 2015–2018 median of the same week, lagged a week | ENTSO-E 16.1.D |
+| `runoff_90d` | ERA5 runoff of the country over the past 90 days / its 1991–2020 normal, at most 5 | backcast `data/country_runoff`, cutouts |
+| `temperature`, `hdd` | population-weighted daily mean temperature of the bus region, heating degrees below 15.5 °C | backcast cutout |
+| `gas_change_30d`, `gas_vol_30d` | change and volatility of the daily gas cost over 30 days | table |
+| `load_forecast_error` | day-ahead load forecast of the zone / model load − 1 | ENTSO-E 6.1.B |
+| `vres_forecast_error` | (day-ahead wind and solar forecast − available model wind and solar) / model load | ENTSO-E 14.1.D |
+
+`reservoir_anomaly` is the one that helps on held-out years; the forecast errors help only as a constant per zone (round 15 in [experiments/NOTES.md](experiments/NOTES.md)). Reservoir filling and the forecasts are only known for past years: for a scenario run, take `reservoir_anomaly` = 0, a normal year.
+
 ## Evaluation splits
 
 - `--split year`: train on the other years. This is the real test, and it becomes meaningful once 3 or more years are available.

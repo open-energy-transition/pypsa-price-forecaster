@@ -112,6 +112,48 @@ def gas_sets_price(table: pd.DataFrame) -> pd.Series:
     return (table.price_setter == "gas").astype(float)
 
 
+def daily_gas(
+    table: pd.DataFrame, transform: Callable[[pd.Series], pd.Series]
+) -> pd.Series:
+    """`transform` of the daily mean gas cost per run and bus, mapped back to the rows."""
+    day = table.snapshot.dt.floor("D")
+    gas = table.cost_gas.groupby([table.run, table.bus, day]).mean()
+    result = gas.groupby(level=["run", "bus"], group_keys=False).apply(transform)
+    keys = pd.MultiIndex.from_arrays([table.run, table.bus, day])
+    return pd.Series(result.reindex(keys).to_numpy(), index=table.index)
+
+
+def attach_exogenous(table: pd.DataFrame, variables: pd.DataFrame) -> pd.DataFrame:
+    """
+    Return `table` with variables per bus from outside the network.
+
+    `variables` are daily with a ``date`` column (:func:`pypsa_price_forecaster.exogenous.build`)
+    or hourly with a ``snapshot`` column (:func:`pypsa_price_forecaster.forecasts.build`).
+    """
+    if "snapshot" in variables:
+        time = table.snapshot
+    else:
+        time = table.snapshot.dt.floor("D").rename("date")
+    joined = pd.concat([table[["bus"]], time], axis=1).merge(
+        variables, on=["bus", time.name], how="left"
+    )
+    columns = variables.columns.difference(["bus", time.name])
+    return table.drop(columns=columns, errors="ignore").assign(
+        **{c: joined[c].to_numpy() for c in columns}
+    )
+
+
+def exogenous(name: str) -> Callable[[pd.DataFrame], pd.Series]:
+    def feature(table: pd.DataFrame) -> pd.Series:
+        if name not in table:
+            raise ValueError(
+                f"Feature {name} needs the variables of `ppf exogenous` or `ppf forecasts`"
+            )
+        return table[name]
+
+    return feature
+
+
 FEATURES: dict[str, Callable[[pd.DataFrame], pd.Series]] = {
     "model_price": lambda t: t.model_price,
     "margin_domestic": lambda t: (supply(t) - t.load) / t.load,
@@ -149,6 +191,17 @@ FEATURES: dict[str, Callable[[pd.DataFrame], pd.Series]] = {
     "dayofweek_local": lambda t: local_time(t).dt.day_of_week,
     "holiday": holiday,
     "month": lambda t: t.snapshot.dt.month,
+    "gas_change_30d": lambda t: daily_gas(t, lambda s: s / s.shift(30) - 1),
+    "gas_vol_30d": lambda t: daily_gas(t, lambda s: np.log(s).diff().rolling(30).std()),
+    "temperature": exogenous("temperature"),
+    "hdd": lambda t: (15.5 - exogenous("temperature")(t)).clip(lower=0),
+    "runoff_90d": exogenous("runoff_90d"),
+    "reservoir_anomaly": exogenous("reservoir_anomaly"),
+    # load and supply of the table are zone totals, as the ENTSO-E forecasts
+    "load_forecast_error": lambda t: exogenous("load_forecast")(t) / t.load - 1,
+    "vres_forecast_error": lambda t: (
+        (exogenous("vres_forecast")(t) - t.supply_vres) / t.load
+    ),
 }
 # best set on six held-out years (experiments/NOTES.md, round 5)
 DEFAULT_FEATURES = [

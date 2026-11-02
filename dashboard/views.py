@@ -55,6 +55,11 @@ def provenance(report: Report) -> str:
         f"Report of {meta['created'][:10]} at commit {commit} · "
         f"runs {', '.join(meta['runs'])} · {meta['split']} split, {meta['folds']} folds · "
         f"{meta['buses']} zones with market prices"
+        + (
+            f" · left out: {', '.join(map(str, meta['excluded_years']))}"
+            if meta.get("excluded_years")
+            else ""
+        )
     )
 
 
@@ -73,6 +78,16 @@ def overview() -> None:
         "The correction learns the gap between the market price and the PyPSA price "
         f"from hourly features of the solved network. {SPLIT_TEXT[report.meta['split']]}"
     )
+    if 2022 in report.meta.get("excluded_years", []):
+        st.info(
+            "2022 is left out. Its backcast was fixed upstream (monthly coal, "
+            "lignite, biomass and waste availability, issue #26 of pypsa-eur-backcast), "
+            "which cuts its raw MAE from 92 to 58 EUR/MWh, while the other years "
+            "still run without the fix. Trained together, the fixed and unfixed years "
+            "contradict each other: the correction makes 2022 worse (58 to 64) and "
+            "helps the other years less. 2022 comes back once every year has the "
+            "same fixes. Details in the experiment log, round 13."
+        )
     scores = report.scores
     raw, corrected = scores.loc["pypsa"], scores.loc["lgbm"]
     tiles = [

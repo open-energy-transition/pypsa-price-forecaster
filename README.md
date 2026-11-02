@@ -78,6 +78,10 @@ All features come from the network alone, so the model also works for future run
 
 Applying 70 % of the correction hedges against corrections that do not carry over to an unseen year: it beats raw PyPSA in every held-out year, while the whole correction is worse in 2023 ([experiments/NOTES.md](experiments/NOTES.md)).
 
+### Price bands
+
+`Banded` (`models.py`) adds a 10 to 90 % band, and every 5 % quantile, around the `lgbm` price. The band comes from the errors of `lgbm` in years it did not see, relative to its predicted price, per zone. It beats the point price on pinball loss in every held-out year, and its probability of a price above 150 EUR/MWh beats the point price ([experiments/NOTES.md](experiments/NOTES.md), rounds 7, 10 and 13). It misses upwards in regime changes such as 2022.
+
 To add a feature, add an entry to `FEATURES` in `dataset.py`, plus a column in `network.py` if it needs new data from the network.
 
 ## Evaluation splits
@@ -95,20 +99,28 @@ Experiments and their results are logged in [experiments/](experiments/).
 - scores per model and year, per zone and per month;
 - feature impact: the default LightGBM refitted without each of its features and with each other feature, plus two seed repeats that give the noise level;
 - split gain per feature;
-- hourly market, PyPSA and corrected prices;
+- hourly market, PyPSA and corrected prices, with the 10 and 90 % quantiles of the price band, and the band's calibration per year;
 - `history.csv`, with one row per report.
 
 It uses the year split once there are several years, otherwise the month split.
 
 ```bash
-pixi run report                    # ppf report data/tables/*.parquet, ~45 min per year of tables
+pixi run report                    # ppf report data/tables/*.parquet --exclude-year 2022, about 2 h
 pixi run report --no-ablation      # quick check without the feature impact
+pixi run report --no-bands         # without the price bands, which refit lgbm per pair of years
 pixi run -e dashboard dashboard    # streamlit run dashboard/app.py
 ```
 
 The dashboard (`dashboard/app.py`) shows `report/` and the experiment log.
 Deploy it on Streamlit Community Cloud from the branch `master` with main file `dashboard/app.py`. It installs only `dashboard/requirements.txt`.
 It then always shows the report committed on master. Rerun `pixi run report` and commit `report/` whenever the code, defaults or tables change.
+The report leaves 2022 out for now: only its backcast has the fixes of pypsa-eur-backcast issue #26, and fixed and unfixed years contradict each other in training ([experiments/NOTES.md](experiments/NOTES.md), round 13).
+
+To refresh the tables from a backcast checkout, with the observed prices the backcast scores itself against:
+
+```bash
+experiments/extract_set.sh ../pypsa-eur-backcast data/tables
+```
 A test fails if `report/` was written with other default features or LightGBM parameters than the code has.
 Set `PPF_REPORT` to show another report directory.
 

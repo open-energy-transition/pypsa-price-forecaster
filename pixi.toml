@@ -39,4 +39,4 @@ dashboard = { features = ["dev", "dashboard"], solve-group = "default" }
 test = "pytest"
 lint = "ruff check . && ruff format --check ."
 ppf = "ppf"
-report = "ppf -v report data/tables/*.parquet"
+report = "ppf -v report data/tables/*.parquet --exclude-year 2022"

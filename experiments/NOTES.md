@@ -402,3 +402,43 @@ Simpler trees carry over to unseen years worse, not better: the 70 % shrink alre
 | E54/E55 | default | **0.157 / 0.084** | 0.104 / −0.069 |
 
 Worse on the year split, even forward. **The default tree size is the best of the four sizes** on held-out years.
+
+## Round 13: the backcast runs of 2026-11-02 (2026-11-02)
+
+All six years were rerun upstream on the same code (pypsa-eur-backcast with the issue #26 branch). The switches of issue #26 are only on for 2022: monthly coal, lignite, biomass and waste availability, daily gas and country-specific coal prices. The other five years are unchanged within 0.05 EUR/MWh of raw median MAE. 2022 falls from 92.4 to 57.6.
+
+From this round on, `data/tables` holds these runs, extracted with `experiments/extract_set.sh` against the backcast's own `day_ahead_prices.csv` (identical to the ENTSO-E prices of the earlier tables). The tables of rounds 2–12 are in `data/tables-2026-10-29`.
+
+### Point correction
+
+| id | training | year | year, vs original raw | forward |
+|---|---|---|---|---|
+| E54/E55 | old tables | 0.157 / 0.084 | 0.157 / 0.084 | 0.104 / −0.069 |
+| E86/E87 | new tables | 0.090 / −0.117 | 0.161 / 0.072 | 0.037 / −0.145 |
+| E90/E91 | new tables without 2022 | 0.150 / 0.068 | – | 0.082 / −0.077 |
+
+Corrected MAE per held-out year, E86: `7.0, 7.0, 22.5, 64.3, 19.5, 20.7` (raw `7.9, 9.4, 25.7, 57.6, 21.0, 22.9`).
+
+Skill on the five other years, year split:
+
+| training | 2019 | 2020 | 2021 | 2023 | 2024 | mean |
+|---|---|---|---|---|---|---|
+| old (unfixed) 2022 | 0.159 | 0.230 | 0.190 | 0.084 | 0.144 | 0.162 |
+| fixed 2022 | 0.117 | 0.249 | 0.123 | 0.070 | 0.097 | 0.131 |
+| no 2022 | 0.192 | 0.277 | 0.100 | 0.068 | 0.111 | 0.150 |
+
+On the forward split the four other years score 0.082 with and without the fixed 2022.
+
+- **The correction makes the fixed 2022 worse** (57.6 raw, 64.3 corrected): the other years still teach it to raise prices that 2022 no longer underprices.
+- **The fixed 2022 also hurts the other years** in training (0.150 → 0.131 on the year split). The old 2022 helped them, as it shares the underpricing of 2021.
+- **2021 is the inconsistent year now**: in its fourth quarter the model makes 40 TWh of gas against 130 in ENTSO-E and prices 37 EUR/MWh too low, the pattern the 2022 fix removed. 2024 makes 0.74 of the ENTSO-E gas.
+- **The report leaves 2022 out** (`ppf report --exclude-year 2022`, in the `report` task) until the issue #26 switches cover the other years; then 2022 goes back in.
+
+### Price bands
+
+| id | tables | year | forward |
+|---|---|---|---|
+| E78/E79 | old tables | 0.151 / 0.031 | 0.169 / 0.155 |
+| E88/E89 | new tables | **0.190 / 0.066** | **0.190 / 0.140** |
+
+Pinball skill, mean / worst. With the fixed 2022, its band holds 71 % of hours (57 % before) and 10 % fall above it (34 %). The bands gain where the point correction loses, as the relative band follows the level of the new 2022.

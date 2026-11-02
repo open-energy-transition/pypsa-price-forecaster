@@ -19,3 +19,13 @@ year,coverage_80,below_10,above_90,width_80,pinball,pinball_point,brier,brier_po
 2022,0.606,0.109,0.293,132.096,32.481,39.1,0.116,0.151,E79_forward_bands_relative,forward,547
 2023,0.8,0.138,0.033,83.26,8.679,10.285,0.071,0.092,E79_forward_bands_relative,forward,547
 2024,0.777,0.13,0.082,60.607,7.901,9.819,0.04,0.053,E79_forward_bands_relative,forward,547
+2019,0.925,0.032,0.031,32.431,3.251,3.482,0.0,0.0,E88_year_bands_consistent,year,1071
+2020,0.826,0.099,0.045,27.144,2.788,3.515,0.0,0.0,E88_year_bands_consistent,year,1071
+2021,0.761,0.054,0.153,64.219,9.436,11.264,0.049,0.066,E88_year_bands_consistent,year,1071
+2022,0.712,0.138,0.097,156.961,22.935,32.141,0.092,0.124,E88_year_bands_consistent,year,1071
+2023,0.821,0.117,0.057,73.139,7.725,9.754,0.059,0.093,E88_year_bands_consistent,year,1071
+2024,0.736,0.129,0.097,55.147,8.158,10.36,0.04,0.048,E88_year_bands_consistent,year,1071
+2021,0.609,0.076,0.318,46.421,11.893,13.832,0.062,0.09,E89_forward_bands_consistent,forward,434
+2022,0.687,0.194,0.066,162.861,25.668,32.594,0.103,0.138,E89_forward_bands_consistent,forward,434
+2023,0.812,0.124,0.053,73.09,8.242,10.291,0.066,0.101,E89_forward_bands_consistent,forward,434
+2024,0.734,0.129,0.095,54.116,8.186,10.345,0.039,0.047,E89_forward_bands_consistent,forward,434

@@ -364,6 +364,21 @@ EXPERIMENTS |= {
         split="forward", features=DEFAULT_FEATURES, bands={}, table_dir=CONSISTENT
     ),
 }
+# without 2022, now the only year with the issue #26 fixes upstream
+EXPERIMENTS |= {
+    "E90_year_consistent_no2022": dict(
+        split="year",
+        features=DEFAULT_FEATURES,
+        table_dir=CONSISTENT,
+        exclude_years=[2022],
+    ),
+    "E91_forward_consistent_no2022": dict(
+        split="forward",
+        features=DEFAULT_FEATURES,
+        table_dir=CONSISTENT,
+        exclude_years=[2022],
+    ),
+}
 MODELS = ["pypsa", "bus_bias", "linear", "lgbm"]
 RESULTS_BY_YEAR = Path("experiments/results_by_year.csv")
 RESULTS_BANDS = Path("experiments/results_bands.csv")

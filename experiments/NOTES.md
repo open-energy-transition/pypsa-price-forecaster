@@ -457,6 +457,6 @@ Skill per held-out year, mean over the training subsets of each size:
 | 4 | 0.178 | 0.267 | 0.088 | 0.060 | 0.130 | 0.145 | 0.060 |
 
 - **The gain per added year shrinks**: +0.077, +0.031, +0.018 on the mean, nothing on the worst year from three to four. Extrapolated, a fifth and sixth year of the same quality add about 0.01–0.02 each.
-- **Which years matters more than how many.** The best three-year subset beats all four years for 2019 (0.192), 2021 (0.149), 2023 (0.093) and 2024 (0.139). Adding 2023 to 2019+2020+2024 lowers 2021 from 0.149 to 0.088; adding 2019 to 2020+2021 lowers 2024 from 0.123 to 0.086 with two years. A year whose backcast errs differently teaches the wrong correction.
+- **Which years matters more than how many.** The best three-year subset beats all four years for 2019 (0.192), 2021 (0.149), 2023 (0.093) and 2024 (0.139). Adding 2023 to 2019+2020+2024 lowers 2021 from 0.149 to 0.088, and adding 2023 to 2020+2021+2024 lowers 2019 from 0.192 to 0.178. A year whose backcast errs differently teaches the wrong correction.
 - 2021 and 2023 stay at 0.06–0.10 whatever the training: their errors are not shared by any other year.
 - More years of the current backcast will not get near 0.5. Years with consistent upstream fixes (issue #26 on every year) should come first; 2025 is then the most useful new year, as the closest to future runs.

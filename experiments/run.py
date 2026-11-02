@@ -347,18 +347,42 @@ EXPERIMENTS |= {
         split="forward", features=DEFAULT_FEATURES, models=LGBM, params=LARGER
     ),
 }
+# Round 13: all six years rerun upstream with the same fixes (issue #26 switches),
+# extracted with experiments/extract_set.sh into data/tables-consistent
+CONSISTENT = "data/tables-consistent"
+EXPERIMENTS |= {
+    "E86_year_consistent": dict(
+        split="year", features=DEFAULT_FEATURES, table_dir=CONSISTENT
+    ),
+    "E87_forward_consistent": dict(
+        split="forward", features=DEFAULT_FEATURES, table_dir=CONSISTENT
+    ),
+    "E88_year_bands_consistent": dict(
+        split="year", features=DEFAULT_FEATURES, bands={}, table_dir=CONSISTENT
+    ),
+    "E89_forward_bands_consistent": dict(
+        split="forward", features=DEFAULT_FEATURES, bands={}, table_dir=CONSISTENT
+    ),
+}
 MODELS = ["pypsa", "bus_bias", "linear", "lgbm"]
 RESULTS_BY_YEAR = Path("experiments/results_by_year.csv")
 RESULTS_BANDS = Path("experiments/results_bands.csv")
 COLUMNS = ["mae", "r", "abs_bias", "mae_top5", "mae_low5"]
 
 
+def spec_table(spec: dict, table: pd.DataFrame) -> pd.DataFrame:
+    """Return the table of an experiment: all runs of `table_dir`, or `table` with runs replaced by `tables`."""
+    if "table_dir" in spec:
+        return read_tables(sorted(Path(spec["table_dir"]).glob("*.parquet")))
+    if "tables" in spec:
+        return read_tables([spec["tables"].get(path.stem, path) for path in TABLES])
+    return table
+
+
 def run(name: str, table: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Return the scores of experiment `name` over all years and per year."""
     spec = {"folds": 4, "models": MODELS} | EXPERIMENTS[name]
-    if "tables" in spec:
-        # runs replaced by the tables of other backcast runs
-        table = read_tables([spec["tables"].get(path.stem, path) for path in TABLES])
+    table = spec_table(spec, table)
     table = table[~table.year.isin(spec.get("exclude_years", []))]
     start = time.time()
     predictions = cross_validate(
@@ -396,6 +420,7 @@ def run(name: str, table: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
 def run_bands(name: str, table: pd.DataFrame) -> pd.DataFrame:
     """Return the band scores per held-out year of experiment `name`, keeping the bands in ``results/``."""
     spec = EXPERIMENTS[name]
+    table = spec_table(spec, table)
     start = time.time()
     bands = cross_validate_bands(
         table, "lgbm", spec["features"], spec["split"], **spec["bands"]

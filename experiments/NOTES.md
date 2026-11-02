@@ -442,3 +442,21 @@ On the forward split the four other years score 0.082 with and without the fixed
 | E88/E89 | new tables | **0.190 / 0.066** | **0.190 / 0.140** |
 
 Pinball skill, mean / worst. With the fixed 2022, its band holds 71 % of hours (57 % before) and 10 % fall above it (34 %). The bands gain where the point correction loses, as the relative band follows the level of the new 2022.
+
+## Round 14: does the correction need more years? (2026-11-02)
+
+`experiments/learning_curve.py` predicts each of 2019, 2020, 2021, 2023 and 2024 (the round 13 tables, 2022 left out) from every subset of one to four of the other years: 75 fits with the default `lgbm`. Results per fit in `experiments/results_learning_curve.csv`.
+
+Skill per held-out year, mean over the training subsets of each size:
+
+| training years | 2019 | 2020 | 2021 | 2023 | 2024 | mean | worst |
+|---|---|---|---|---|---|---|---|
+| 1 | −0.107 | 0.079 | 0.048 | 0.010 | 0.064 | 0.019 | −0.107 |
+| 2 | 0.057 | 0.206 | 0.084 | 0.040 | 0.092 | 0.096 | 0.040 |
+| 3 | 0.104 | 0.238 | 0.100 | 0.060 | 0.131 | 0.127 | 0.060 |
+| 4 | 0.178 | 0.267 | 0.088 | 0.060 | 0.130 | 0.145 | 0.060 |
+
+- **The gain per added year shrinks**: +0.077, +0.031, +0.018 on the mean, nothing on the worst year from three to four. Extrapolated, a fifth and sixth year of the same quality add about 0.01–0.02 each.
+- **Which years matters more than how many.** The best three-year subset beats all four years for 2019 (0.192), 2021 (0.149), 2023 (0.093) and 2024 (0.139). Adding 2023 to 2019+2020+2024 lowers 2021 from 0.149 to 0.088; adding 2019 to 2020+2021 lowers 2024 from 0.123 to 0.086 with two years. A year whose backcast errs differently teaches the wrong correction.
+- 2021 and 2023 stay at 0.06–0.10 whatever the training: their errors are not shared by any other year.
+- More years of the current backcast will not get near 0.5. Years with consistent upstream fixes (issue #26 on every year) should come first; 2025 is then the most useful new year, as the closest to future runs.

@@ -460,3 +460,74 @@ Skill per held-out year, mean over the training subsets of each size:
 - **Which years matters more than how many.** The best three-year subset beats all four years for 2019 (0.192), 2021 (0.149), 2023 (0.093) and 2024 (0.139). Adding 2023 to 2019+2020+2024 lowers 2021 from 0.149 to 0.088, and adding 2023 to 2020+2021+2024 lowers 2019 from 0.192 to 0.178. A year whose backcast errs differently teaches the wrong correction.
 - 2021 and 2023 stay at 0.06–0.10 whatever the training: their errors are not shared by any other year.
 - More years of the current backcast will not get near 0.5. Years with consistent upstream fixes (issue #26 on every year) should come first; 2025 is then the most useful new year, as the closest to future runs.
+
+## Round 15: variables from outside the network (2026-11-02)
+
+Does anything the network does not know track the error the correction leaves? `experiments/exogenous_check.py` first correlated the out-of-sample residual of the report (observed − `lgbm`, mean per zone and day) with candidate daily variables (Spearman):
+
+| variable | daily | within zone-year | zone-month |
+|---|---|---|---|
+| temperature (population weighted, ERA5 cutout) | 0.215 | 0.167 | 0.292 |
+| temperature anomaly vs the six years | −0.043 | −0.019 | −0.068 |
+| runoff of the past 90 days / 1991–2020 normal | −0.116 | −0.142 | −0.136 |
+| runoff of the past 365 days / normal | −0.017 | −0.079 | −0.003 |
+| gas cost change over 30 days | 0.187 | 0.142 | 0.229 |
+| gas volatility over 30 days | −0.056 | −0.039 | −0.097 |
+| CO2 price change over 30 days | 0.080 | 0.054 | 0.086 |
+
+Temperature works through the season (its anomaly carries nothing), the rest is weak but plausible: wet quarters lower prices beyond what PyPSA's hydro dispatch gives, rising gas lifts them. The candidates became features, with the daily data built by the new `ppf exogenous`:
+
+- `temperature`, `hdd`: population-weighted daily mean temperature per bus region from the ERA5 cutout of the backcast.
+- `runoff_90d`: ERA5 runoff per country over the past 90 days against its 1991–2020 normal (PyPSA-Eur's runoff series, extended to 2024 with the cutout), capped at 5 for countries with hardly any runoff (NL, DK, LU).
+- `reservoir_anomaly`: weekly hydro reservoir filling of the country from ENTSO-E (16.1.D, 20 countries), as share of its 2015–2018 maximum minus the 2015–2018 median of the same week, lagged one week as known at the auction.
+- `gas_change_30d`, `gas_vol_30d`: from the gas cost of the table.
+
+Each was added alone to the 13 default features, 2022 left out. The baseline is the default rerun on the same tables (E116/E117 and seeds E102–E105): E90/E91 ran on an earlier 2024 table without AL00, ME00, MK00 and XK00, so their raw MAE differs (22.94 instead of 24.07) and they are not comparable.
+
+| features | year mean / worst | forward mean / worst |
+|---|---|---|
+| default, seeds 0–2 (E116, E102, E104 / E117, E103, E105) | 0.144 / 0.060 | 0.087 / −0.074 |
+| + gas change (E92/E93) | 0.139 / 0.045 | 0.089 / −0.013 |
+| + gas volatility (E94/E95) | 0.136 / 0.067 | 0.085 / −0.042 |
+| + temperature (E96/E97) | 0.160 / 0.042 | 0.095 / −0.066 |
+| + runoff (E98/E99) | 0.150 / 0.073 | 0.083 / −0.027 |
+| + reservoir, 2015–2024 normal, seeds 0–2 (E100, E106, E108 / E101, E107, E109) | 0.175 / 0.069 | 0.091 / −0.025 |
+| **+ reservoir, 2015–2018 normal (E112/E113)** | **0.176 / 0.073** | **0.092 / −0.029** |
+| + reservoir, runoff, temperature (E114/E115) | 0.172 / 0.063 | 0.106 / −0.017 |
+
+Skill per held-out year, year split:
+
+| | 2019 | 2020 | 2021 | 2023 | 2024 |
+|---|---|---|---|---|---|
+| default (E116) | 0.178 | 0.267 | 0.088 | 0.060 | 0.130 |
+| + reservoir (E112) | 0.272 | 0.281 | 0.110 | 0.073 | 0.144 |
+
+- **Reservoir filling is the one clear gain**: +0.031 on the year mean, better in every held-out year, the same over three seeds (spread ±0.002 with the 2015–2024 normal), and it more than halves the worst forward year (2021, −0.074 → −0.029). It is the water value PyPSA misses: with perfect foresight its reservoirs release at near-zero cost, while the market prices hydro by how full the reservoirs are. 2019 gains most, 0.178 → 0.272.
+- The reservoir normal of E100–E111 included the held-out year; the 2015–2018 normal, before any backcast year, gives the same skill, so the gain is not a leak.
+- Gas momentum and volatility do not carry over: the default features already see the gas cost through the model price.
+- Temperature lifts the mean but lowers the worst year, as a season proxy it lets trees memorise years. Runoff is about the noise on its own and adds nothing on top of reservoirs.
+- All three weather variables together are the best forward mean (0.106) but below reservoirs alone on the year split. Reservoirs alone is the simpler choice.
+- For a scenario run the observed filling is unknown; `reservoir_anomaly` = 0 (a normal year) is the neutral input. The model's own hydro state of charge would be the scenario-proof version (needs a new table column).
+
+### The day-ahead forecasts the market cleared on
+
+`ppf forecasts` downloads the ENTSO-E day-ahead load forecast (6.1.B) and wind and solar forecast (14.1.D) per area, hourly, 2019–2024 (16 area-years unpublished). `load_forecast_error` = forecast / model load − 1 and `vres_forecast_error` = (forecast − available model wind and solar) / model load, per zone. `experiments/forecast_check.py` finds no correlation with the residual of the report: Spearman −0.002 / −0.007 hourly, 0.008 / −0.011 within zone-year, −0.005 / −0.009 per zone and day.
+
+In training they still help, on top of reservoirs:
+
+| features | year mean / worst | forward mean / worst |
+|---|---|---|
+| default + reservoir (E112/E113) | 0.176 / 0.073 | 0.092 / −0.029 |
+| + both forecast errors, seeds 0–2 (E118, E120, E122 / E119, E121, E123) | 0.184 / 0.091 | 0.102 / −0.020 |
+| + load forecast error (E124/E125) | 0.182 / 0.089 | 0.096 / −0.018 |
+| + wind and solar forecast error (E126/E127) | 0.182 / 0.090 | 0.093 / −0.034 |
+| **placebo**: each bus keeps its median forecast error of all years (E128/E129) | 0.184 / 0.090 | 0.102 / −0.028 |
+
+- **The gain is the zone, not the forecast.** The placebo, a constant per bus, scores as well as the hourly forecasts in every held-out year. The trees use how far the model's load and wind and solar sit from ENTSO-E's in each zone (ITCA load +53 %, SE02 wind and solar +49 % of load), a numeric zone descriptor, which unlike the `bus` category (E46/E47) can rank zones.
+- The hourly forecast errors carry nothing beyond that, so they are not worth a download that only exists for past years. The zone offsets point at upstream calibration (zone extents and capacities in the backcast) and are better fixed there.
+
+### Round 15 conclusions
+
+- Use `reservoir_anomaly` (+0.032 year mean, every held-out year better, worst forward year −0.074 → −0.029). It is not a default yet because it needs `ppf exogenous` data, which the report and dashboard would need too.
+- Of the literature's usual price drivers, the weather (temperature, runoff), the fuel momentum and the day-ahead forecasts add nothing once reservoirs are in, or only through zone identity.
+- Still far from 0.5: the remaining error is mostly the level per zone and year that no outside variable here explains.

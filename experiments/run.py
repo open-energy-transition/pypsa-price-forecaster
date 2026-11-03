@@ -30,9 +30,6 @@ from pypsa_price_forecaster.evaluate import (
     scores,
 )
 
-# the network features of round 5, the defaults before reservoir filling joined them,
-# so that the experiments below keep their meaning
-DEFAULT_FEATURES = [f for f in DEFAULT_FEATURES if f != "reservoir_anomaly"]
 TABLES = sorted(Path("data/tables").glob("*.parquet"))
 RESULTS = Path("experiments/results.csv")
 NO_MONTH = [f for f in DEFAULT_FEATURES if f != "month"]

@@ -219,8 +219,7 @@ VARIABLES = {
     "load_forecast_error": "load_forecast",
     "vres_forecast_error": "vres_forecast",
 }
-# best set on held-out years (experiments/NOTES.md, rounds 5 and 16), reservoir_anomaly
-# needs the variables of `ppf exogenous`
+# best set on held-out years from the network alone (experiments/NOTES.md, round 5)
 DEFAULT_FEATURES = [
     "model_price",
     "margin_domestic",
@@ -235,7 +234,6 @@ DEFAULT_FEATURES = [
     "price_setter",
     "imports_congested",
     "exports_congested",
-    "reservoir_anomaly",
 ]
 
 

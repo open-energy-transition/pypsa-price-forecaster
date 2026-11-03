@@ -76,8 +76,7 @@ def overview() -> None:
     st.caption(provenance(report))
     st.markdown(
         "The correction learns the gap between the market price and the PyPSA price "
-        "from hourly features of the solved network and the filling of hydro reservoirs. "
-        f"{SPLIT_TEXT[report.meta['split']]}"
+        f"from hourly features of the solved network. {SPLIT_TEXT[report.meta['split']]}"
     )
     if 2022 in report.meta.get("excluded_years", []):
         st.info(

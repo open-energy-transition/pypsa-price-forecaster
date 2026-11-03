@@ -6,7 +6,6 @@ from pypsa_price_forecaster.dataset import (
     DEFAULT_FEATURES,
     build_table,
     feature_matrix,
-    has_variables,
     holiday,
     local_time,
 )
@@ -47,8 +46,7 @@ def test_build_table_reads_network_and_prices(run_files):
     assert set(table.run) == {"solved_2023"}
     assert set(table.year) == {2023}
     assert table.observed_price.notna().all()
-    network = [f for f in DEFAULT_FEATURES if has_variables(table, f)]
-    assert feature_matrix(table, network).notna().all().all()
+    assert feature_matrix(table, DEFAULT_FEATURES).notna().all().all()
 
 
 def test_unknown_feature_raises(network):

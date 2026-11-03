@@ -7,8 +7,6 @@ the model price that rises as the margin with imports gets tight, which the
 learned models should pick up.
 """
 
-from pathlib import Path
-
 import numpy as np
 import pandas as pd
 import pypsa
@@ -17,7 +15,6 @@ import pytest
 from pypsa_price_forecaster.dataset import FEATURES
 
 HOURS = 24 * 28
-YEARS = [2019, 2021, 2023]
 
 
 def make_network(year: int, seed: int) -> pypsa.Network:
@@ -120,7 +117,7 @@ def run_files(tmp_path) -> list[tuple]:
     from pypsa_price_forecaster.network import extract
 
     files = []
-    for seed, year in enumerate(YEARS):
+    for seed, year in enumerate([2019, 2021, 2023]):
         n = make_network(year, seed)
         network = tmp_path / f"solved_{year}.nc"
         prices = tmp_path / f"day_ahead_prices_{year}.csv"
@@ -131,26 +128,11 @@ def run_files(tmp_path) -> list[tuple]:
 
 
 @pytest.fixture
-def variables(tmp_path) -> Path:
-    """Write daily reservoir filling anomalies of the buses of the three runs, return the path."""
-    rng = np.random.default_rng(0)
-    days = [pd.date_range(f"{y}-01-01", periods=HOURS // 24, freq="D") for y in YEARS]
-    daily = pd.MultiIndex.from_product(
-        [days[0].append(days[1:]), ["A", "B1", "B2"]], names=["date", "bus"]
-    ).to_frame(index=False)
-    daily["reservoir_anomaly"] = rng.normal(0, 0.1, len(daily))
-    path = tmp_path / "exogenous.parquet"
-    daily.to_parquet(path, index=False)
-    return path
+def table(run_files) -> pd.DataFrame:
+    """Tables of the three runs with observed prices."""
+    from pypsa_price_forecaster.dataset import build_table
 
-
-@pytest.fixture
-def table(run_files, variables) -> pd.DataFrame:
-    """Tables of the three runs with observed prices and reservoir filling."""
-    from pypsa_price_forecaster.dataset import attach_exogenous, build_table
-
-    tables = pd.concat([build_table(*f) for f in run_files], ignore_index=True)
-    return attach_exogenous(tables, pd.read_parquet(variables))
+    return pd.concat([build_table(*f) for f in run_files], ignore_index=True)
 
 
 @pytest.fixture

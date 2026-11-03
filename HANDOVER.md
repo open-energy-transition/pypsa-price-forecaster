@@ -10,11 +10,12 @@ to push on this — read the "Honest assessment" section before doing anything e
   configuration, the 2022 recipe (`backcast-<year>-recipe`). With the same fixes in
   every year, 2022 is back in the report and the correction helps every held-out year
   (round 16). This supersedes the round 13 note below.
-- **Default features:** `reservoir_anomaly` (hydro reservoir filling against the normal
-  of the week, ENTSO-E, lagged a week) joined the defaults. It is the only variable
-  from outside the network that helped (round 15). The default model therefore needs
-  `--variables data/exogenous.parquet`, built with `ppf exogenous`. Temperature, runoff
-  and gas momentum add nothing; the day-ahead forecast errors only act as zone identity.
+- **Default features stay network-only** (user decision): the correction must run on
+  any solved network, plus at most easily measured inputs such as temperature.
+  `reservoir_anomaly` (observed ENTSO-E filling) helps (+0.016 year skill) but is
+  optional (`--variables`); the model's own reservoir filling does not replace it
+  (round 17). Temperature, runoff and gas momentum add nothing; the day-ahead forecast
+  errors only act as zone identity.
 
 ## Update after rounds 6–12 (2026-10-30)
 
@@ -44,8 +45,7 @@ Tier 1 and most of tier 2 below are done; details in `experiments/NOTES.md`.
 
 - This repo corrects PyPSA model prices from `pypsa-eur-backcast` towards observed
   day-ahead prices, using LightGBM on features computed from the solved network only
-  (never observed data — the model must also run on future/scenario networks), plus
-  the hydro reservoir filling known a week ahead, set to 0 (a normal year) for scenarios.
+  (never observed data — the model must also run on future/scenario networks).
 - `experiments/NOTES.md` is the full experiment log, rounds 1–5, in order. Read it
   before proposing anything — it's long but it tells you what's already been tried
   and why it was rejected, so you don't repeat work.

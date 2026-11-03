@@ -69,7 +69,7 @@ def test_saved_model_predicts_the_same(table, tmp_path):
     assert model.trained_on == ["solved_2019", "solved_2021"]
 
 
-def test_cli_extract_evaluate_train_predict(run_files, variables, tmp_path):
+def test_cli_extract_evaluate_train_predict(run_files, tmp_path):
     runner = CliRunner()
 
     def invoke(*args):
@@ -83,26 +83,10 @@ def test_cli_extract_evaluate_train_predict(run_files, variables, tmp_path):
         invoke("extract", network, "--prices", prices, "--out", tables[-1])
 
     result = invoke(
-        "evaluate",
-        *tables,
-        "--out-dir",
-        tmp_path / "eval",
-        "-m",
-        "pypsa",
-        "-m",
-        "lgbm",
-        "--variables",
-        variables,
+        "evaluate", *tables, "--out-dir", tmp_path / "eval", "-m", "pypsa", "-m", "lgbm"
     )
     invoke(
-        "evaluate",
-        tables[0],
-        "--out-dir",
-        tmp_path / "eval_week",
-        "--split",
-        "week",
-        "--variables",
-        variables,
+        "evaluate", tables[0], "--out-dir", tmp_path / "eval_week", "--split", "week"
     )
     assert "lgbm" in result.output
     scores = pd.read_csv(tmp_path / "eval" / "summary.csv")

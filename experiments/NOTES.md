@@ -574,7 +574,7 @@ Skill flatters the recipe, whose raw prices are too high in normal years: part o
 
 ### Adopted (2026-11-03)
 
-- `data/tables` is now the recipe set (`backcast-<year>-recipe`, 2019–2025), and `reservoir_anomaly` is a default feature, so the default model needs `--variables data/exogenous.parquet` (the `report` task passes it).
+- `data/tables` is now the recipe set (`backcast-<year>-recipe`, 2019–2025). The default features stay the 13 network features of round 5: the correction must run on any solved network, so observed inputs such as `reservoir_anomaly` stay optional (`--variables`, round 17).
 - 2022 is back in the report. Training on 2022 hardly moves the other recipe years (year split: 2021 20.98 with against 21.80 without, 2019 6.68 against 6.49, the rest within 0.2), so the round 13 reason to leave it out, one fixed year among unfixed ones, is gone. The correction does nothing for 2022 itself (57.76 raw, 58.29 corrected on the year split).
 - The ablation of the report only adds features whose variables the table holds (`has_variables`), so it covers temperature and runoff but not the forecast errors.
 
@@ -591,7 +591,7 @@ Skill flatters the recipe, whose raw prices are too high in normal years: part o
 | `inflow_90d_model` | 0.180 / 0.006 | 0.149 / −0.013 |
 | `reservoir_anomaly_model` + `inflow_90d_model` | 0.184 / 0.012 | 0.146 / −0.009 |
 
-- **None of the model's variables helps**: within the noise on the year split, 0.006–0.014 worse forward. The observed filling stays the default.
+- **None of the model's variables helps**: within the noise on the year split, 0.006–0.014 worse forward. So the defaults stay network-only and the observed filling stays an option.
 - The model's filling does not follow the real one: r = 0.10 between the model and the observed weekly anomaly. In Italy, Norway and Sweden the model anomaly is about 0 every year.
 - Two reasons in the backcast's hydro: some reservoirs are far too large to bind (ITCA and ITS1 `max_hours` ≈ 17,800, NOM1 39.5 TWh for 16.7 TWh inflow, all stay at 43–55 % the whole year), and every year is solved with a cyclic state of charge and free start level, so no year can start with reservoirs low after a dry one, which is what the market priced in 2022. Others (AT, CH, FR, PT, NOS2, ITN1) run from empty to full within the year.
 - The model's inflow tracks the cutout runoff (r = 0.58) and, like `runoff_90d` in round 15, adds nothing.

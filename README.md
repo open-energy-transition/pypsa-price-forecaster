@@ -86,7 +86,7 @@ To add a feature, add an entry to `FEATURES` in `dataset.py`, plus a column in `
 
 ### Variables from outside the network
 
-Some features need daily or hourly data the network does not hold. Build them once, then pass them with `--variables` to `evaluate`, `train`, `predict` and `report`. The default features include `reservoir_anomaly`, so the default model needs `--variables data/exogenous.parquet`:
+Some features need daily or hourly data the network does not hold. Build them once, then pass them with `--variables` to `evaluate`, `train`, `predict` and `report`. The default features use the network alone, so the correction runs on any solved network, scenarios included; these variables are optional:
 
 ```bash
 # daily temperature and runoff from the backcast's ERA5 cutouts, hydro reservoir filling from ENTSO-E
@@ -107,7 +107,7 @@ pixi run ppf evaluate data/tables/*.parquet -o results/eval --variables data/exo
 | `load_forecast_error` | day-ahead load forecast of the zone / model load − 1 | ENTSO-E 6.1.B |
 | `vres_forecast_error` | (day-ahead wind and solar forecast − available model wind and solar) / model load | ENTSO-E 14.1.D |
 
-`reservoir_anomaly` is the one that helps on held-out years, and is a default feature; the forecast errors help only as a constant per zone (rounds 15 and 16 in [experiments/NOTES.md](experiments/NOTES.md)). Reservoir filling and the forecasts are only known for past years: for a scenario run, take `reservoir_anomaly` = 0, a normal year.
+`reservoir_anomaly` is the one that helps on held-out years (+0.016 mean skill on the year split), but it is observed data a scenario run does not have, and the model's own reservoir filling does not replace it, so it is not a default; the forecast errors help only as a constant per zone (rounds 15 to 17 in [experiments/NOTES.md](experiments/NOTES.md)). Reservoir filling and the forecasts are only known for past years: for a scenario run, take `reservoir_anomaly` = 0, a normal year.
 
 ## Evaluation splits
 
@@ -130,7 +130,7 @@ Experiments and their results are logged in [experiments/](experiments/).
 It uses the year split once there are several years, otherwise the month split.
 
 ```bash
-pixi run report                    # ppf report data/tables/*.parquet --variables data/exogenous.parquet, about 2 h
+pixi run report                    # ppf report data/tables/*.parquet, about 2 h
 pixi run report --no-ablation      # quick check without the feature impact
 pixi run report --no-bands         # without the price bands, which refit lgbm per pair of years
 pixi run -e dashboard dashboard    # streamlit run dashboard/app.py
@@ -141,11 +141,10 @@ Deploy it on Streamlit Community Cloud from the branch `master` with main file `
 It then always shows the report committed on master. Rerun `pixi run report` and commit `report/` whenever the code, defaults or tables change.
 The tables are the backcast runs of 2019 to 2025 on one identical configuration, the 2022 recipe of pypsa-eur-backcast (monthly availability and the other issue #26 fixes for every year). With every year on the same fixes, 2022 is back in training and scoring ([experiments/NOTES.md](experiments/NOTES.md), round 16).
 
-To refresh the tables and the reservoir filling from a backcast checkout, with the observed prices the backcast scores itself against:
+To refresh the tables from a backcast checkout, with the observed prices the backcast scores itself against:
 
 ```bash
 experiments/extract_set.sh ../pypsa-eur-backcast data/tables "$(seq -s ' ' 2019 2025)" recipe
-pixi run ppf exogenous ../pypsa-eur-backcast $(printf -- '--year %s ' $(seq 2019 2025))
 ```
 A test fails if `report/` was written with other default features or LightGBM parameters than the code has.
 Set `PPF_REPORT` to show another report directory.

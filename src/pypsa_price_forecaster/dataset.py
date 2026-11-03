@@ -203,7 +203,17 @@ FEATURES: dict[str, Callable[[pd.DataFrame], pd.Series]] = {
         (exogenous("vres_forecast")(t) - t.supply_vres) / t.load
     ),
 }
-# best set on six held-out years (experiments/NOTES.md, round 5)
+# column from outside the network each feature needs, see attach_exogenous
+VARIABLES = {
+    "temperature": "temperature",
+    "hdd": "temperature",
+    "runoff_90d": "runoff_90d",
+    "reservoir_anomaly": "reservoir_anomaly",
+    "load_forecast_error": "load_forecast",
+    "vres_forecast_error": "vres_forecast",
+}
+# best set on held-out years (experiments/NOTES.md, rounds 5 and 16), reservoir_anomaly
+# needs the variables of `ppf exogenous`
 DEFAULT_FEATURES = [
     "model_price",
     "margin_domestic",
@@ -218,7 +228,13 @@ DEFAULT_FEATURES = [
     "price_setter",
     "imports_congested",
     "exports_congested",
+    "reservoir_anomaly",
 ]
+
+
+def has_variables(table: pd.DataFrame, feature: str) -> bool:
+    """Whether `table` holds the variables from outside the network that `feature` needs."""
+    return feature not in VARIABLES or VARIABLES[feature] in table
 
 
 def feature_matrix(table: pd.DataFrame, features: Iterable[str]) -> pd.DataFrame:

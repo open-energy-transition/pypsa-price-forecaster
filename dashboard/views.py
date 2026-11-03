@@ -76,17 +76,13 @@ def overview() -> None:
     st.caption(provenance(report))
     st.markdown(
         "The correction learns the gap between the market price and the PyPSA price "
-        f"from hourly features of the solved network. {SPLIT_TEXT[report.meta['split']]}"
+        "from hourly features of the solved network and the filling of hydro reservoirs. "
+        f"{SPLIT_TEXT[report.meta['split']]}"
     )
     if 2022 in report.meta.get("excluded_years", []):
         st.info(
-            "2022 is left out. Its backcast was fixed upstream (monthly coal, "
-            "lignite, biomass and waste availability, issue #26 of pypsa-eur-backcast), "
-            "which cuts its raw MAE from 92 to 58 EUR/MWh, while the other years "
-            "still run without the fix. Trained together, the fixed and unfixed years "
-            "contradict each other: the correction makes 2022 worse (58 to 64) and "
-            "helps the other years less. 2022 comes back once every year has the "
-            "same fixes. Details in the experiment log, round 13."
+            "2022 is left out of training and scoring. Details in the experiment log, "
+            "rounds 13 and 16."
         )
     scores = report.scores
     raw, corrected = scores.loc["pypsa"], scores.loc["lgbm"]

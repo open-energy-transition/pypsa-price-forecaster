@@ -3,7 +3,7 @@
 # with the observed prices the backcast scores itself against (no download).
 # Usage: experiments/extract_set.sh <backcast checkout> <table dir> [years] [variant]
 # e.g.   experiments/extract_set.sh ../pypsa-eur-backcast data/tables-consistent
-#        experiments/extract_set.sh ../pypsa-eur-backcast data/tables-uniform "2019 2025" uniform
+#        experiments/extract_set.sh ../pypsa-eur-backcast data/tables "$(seq -s ' ' 2019 2025)" recipe
 # A variant reads results/backcast-<year>-<variant> and names the runs the same.
 set -euo pipefail
 root=$1

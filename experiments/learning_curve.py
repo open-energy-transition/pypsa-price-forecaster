@@ -40,7 +40,8 @@ def main() -> None:
                 logging.info(f"Predicting {test_year} from {train_years}.")
                 model = make_model("lgbm").fit(table[table.year.isin(train_years)])
                 predictions = pd.DataFrame(
-                    {"pypsa": test.model_price, "lgbm": model.predict(test)}, index=test.index
+                    {"pypsa": test.model_price, "lgbm": model.predict(test)},
+                    index=test.index,
                 )
                 mae = summary(bus_metrics(test, predictions)).mae.droplevel("year")
                 rows.append(
@@ -60,7 +61,11 @@ def main() -> None:
     print("Mean skill over training subsets, per held-out year:")
     print(per_year.round(3).to_string())
     print("\nMean / worst over held-out years:")
-    print(pd.DataFrame({"mean": per_year.mean(axis=1), "worst": per_year.min(axis=1)}).round(3))
+    print(
+        pd.DataFrame(
+            {"mean": per_year.mean(axis=1), "worst": per_year.min(axis=1)}
+        ).round(3)
+    )
     print("=== DONE")
 
 

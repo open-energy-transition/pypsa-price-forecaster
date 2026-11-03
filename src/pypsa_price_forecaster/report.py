@@ -34,7 +34,12 @@ import pandas as pd
 from lightgbm import LGBMRegressor
 
 from pypsa_price_forecaster import __version__
-from pypsa_price_forecaster.dataset import DEFAULT_FEATURES, FEATURES, TARGET
+from pypsa_price_forecaster.dataset import (
+    DEFAULT_FEATURES,
+    FEATURES,
+    TARGET,
+    has_variables,
+)
 from pypsa_price_forecaster.evaluate import (
     band_scores,
     bus_metrics,
@@ -123,9 +128,13 @@ def monthly(table: pd.DataFrame, predictions: pd.DataFrame) -> pd.DataFrame:
 def ablation(
     table: pd.DataFrame, split: str, folds: int, features: list[str]
 ) -> pd.DataFrame:
-    """Return the scores of ``lgbm`` without each of `features` and with each other feature."""
+    """Return the scores of ``lgbm`` without each of `features` and with each other feature `table` has the variables of."""
     variants = [("without", f, [g for g in features if g != f]) for f in features]
-    variants += [("with", f, [*features, f]) for f in FEATURES if f not in features]
+    variants += [
+        ("with", f, [*features, f])
+        for f in FEATURES
+        if f not in features and has_variables(table, f)
+    ]
     result = {}
     for change, feature, used in variants:
         logger.info(f"Ablation: lgbm {change} {feature}.")

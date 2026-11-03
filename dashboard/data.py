@@ -48,6 +48,7 @@ FEATURE_TEXT = {
     "hour": "Hour of day (UTC)",
     "dayofweek": "Day of week",
     "month": "Month",
+    "reservoir_anomaly": "Hydro reservoir filling vs normal for the week",
 }
 AREA_NAMES = {
     "DE_LU": "Germany",

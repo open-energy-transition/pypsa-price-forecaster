@@ -571,3 +571,9 @@ Skill flatters the recipe, whose raw prices are too high in normal years: part o
 - `uniform` is master with a broken 2022 (gas under-dispatch, 92.30): no gain, as the backcast's own comparison found.
 - Reservoir filling adds +0.015 to +0.027 on the year mean of every set. With 2022 on the forward split it costs 2022 (57.24 → 58.99, trained on 2019–2021 only).
 - Best so far: recipe tables with reservoir filling, 0.233 / 0.202 mean skill without 2022. Against master's raw MAE the corrected recipe prices (default features) are 8 % (year) and 8 % (forward) better with 2022, 12.5 % and 11 % without.
+
+### Adopted (2026-11-03)
+
+- `data/tables` is now the recipe set (`backcast-<year>-recipe`, 2019–2025), and `reservoir_anomaly` is a default feature, so the default model needs `--variables data/exogenous.parquet` (the `report` task passes it).
+- 2022 is back in the report. Training on 2022 hardly moves the other recipe years (year split: 2021 20.98 with against 21.80 without, 2019 6.68 against 6.49, the rest within 0.2), so the round 13 reason to leave it out, one fixed year among unfixed ones, is gone. The correction does nothing for 2022 itself (57.76 raw, 58.29 corrected on the year split).
+- The ablation of the report only adds features whose variables the table holds (`has_variables`), so it covers temperature and runoff but not the forecast errors.

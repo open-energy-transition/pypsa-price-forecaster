@@ -232,10 +232,11 @@ def report(
         list[int] | None,
         typer.Option(help="Leave a year out of training and scoring (repeatable)."),
     ] = None,
+    variables: Variables = None,
 ) -> None:
     """Write the report of the default models that the dashboard shows."""
     scores = write_report(
-        read_tables(tables),
+        with_variables(read_tables(tables), variables),
         out_dir,
         split,
         with_ablation=ablation,

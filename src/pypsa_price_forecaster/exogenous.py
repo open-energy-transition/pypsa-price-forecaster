@@ -35,7 +35,7 @@ RUNOFF_CAP = (
     5  # countries with hardly any runoff (NL, DK, LU) give ratios far beyond this
 )
 CLIMATE = slice("1991", "2020")
-RESERVOIR_YEARS = range(2015, 2025)
+RESERVOIR_YEARS = range(2015, 2026)
 RESERVOIR_CLIMATE = range(
     2015, 2019
 )  # before the backcast years, so no test year sets the normal

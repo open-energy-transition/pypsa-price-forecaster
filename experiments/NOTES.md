@@ -570,4 +570,4 @@ Skill flatters the recipe, whose raw prices are too high in normal years: part o
 - On master, the correction learned on earlier years makes the forward split worse overall (27.04 against raw 26.92), because nothing before 2021 teaches it a gas crisis.
 - `uniform` is master with a broken 2022 (gas under-dispatch, 92.30): no gain, as the backcast's own comparison found.
 - Reservoir filling adds +0.015 to +0.027 on the year mean of every set. With 2022 on the forward split it costs 2022 (57.24 → 58.99, trained on 2019–2021 only).
-- Best so far: recipe tables with reservoir filling, 0.233 / 0.202 mean skill without 2022. Against master's raw MAE the corrected recipe prices are 8 % (year) and 8 % (forward) better with 2022, 12.5 % and 11 % without.
+- Best so far: recipe tables with reservoir filling, 0.233 / 0.202 mean skill without 2022. Against master's raw MAE the corrected recipe prices (default features) are 8 % (year) and 8 % (forward) better with 2022, 12.5 % and 11 % without.

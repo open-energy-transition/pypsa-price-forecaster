@@ -487,6 +487,39 @@ for k, split in enumerate(["year", "forward"]):
     EXPERIMENTS[f"E{128 + k}_{split}_reservoir_forecasts_placebo"] = EXPERIMENTS[
         f"E{118 + k}_{split}_reservoir_forecasts"
     ] | {"exogenous": [EXOGENOUS, "data/forecasts_placebo.parquet"]}
+# Round 16: every year 2019-2025 rerun upstream on one identical config, as
+# the plain base model (uniform) and with the 2022 recipe on every year
+# (recipe), against master with its 2025 run (exp/backcast-uniform-config)
+TABLE_SETS = {
+    "master": "data/tables-master",
+    "uniform": "data/tables-uniform",
+    "recipe": "data/tables-recipe",
+}
+for i, (key, table_dir) in enumerate(TABLE_SETS.items()):
+    for j, excluded in enumerate([[], [2022]]):
+        for k, split in enumerate(["year", "forward"]):
+            name = f"{split}_{key}" + ("_no2022" if excluded else "")
+            EXPERIMENTS[f"E{130 + 4 * i + 2 * j + k}_{name}"] = dict(
+                split=split,
+                features=DEFAULT_FEATURES,
+                models=LGBM,
+                table_dir=table_dir,
+                exclude_years=excluded,
+            )
+# reservoir filling on the round 16 sets (data/exogenous.parquet now 2019-2025)
+for i, (key, excluded) in enumerate(
+    [("master", [2022]), ("recipe", []), ("recipe", [2022])]
+):
+    for k, split in enumerate(["year", "forward"]):
+        name = f"{split}_{key}" + ("_no2022" if excluded else "") + "_reservoir"
+        EXPERIMENTS[f"E{142 + 2 * i + k}_{name}"] = dict(
+            split=split,
+            features=DEFAULT_FEATURES + ["reservoir_anomaly"],
+            models=LGBM,
+            table_dir=TABLE_SETS[key],
+            exogenous=EXOGENOUS,
+            exclude_years=excluded,
+        )
 MODELS = ["pypsa", "bus_bias", "linear", "lgbm"]
 RESULTS_BY_YEAR = Path("experiments/results_by_year.csv")
 RESULTS_BANDS = Path("experiments/results_bands.csv")

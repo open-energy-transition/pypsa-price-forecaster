@@ -531,3 +531,43 @@ In training they still help, on top of reservoirs:
 - Use `reservoir_anomaly` (+0.032 year mean, every held-out year better, worst forward year −0.074 → −0.029). It is not a default yet because it needs `ppf exogenous` data, which the report and dashboard would need too.
 - Of the literature's usual price drivers, the weather (temperature, runoff), the fuel momentum and the day-ahead forecasts add nothing once reservoirs are in, or only through zone identity.
 - Still far from 0.5: the remaining error is mostly the level per zone and year that no outside variable here explains.
+
+## Round 16: every year on one identical upstream config (2026-11-03)
+
+The backcast reran 2019–2025 on one model config, keeping only per-year facts (branch `exp/backcast-uniform-config` of pypsa-eur-backcast), in two variants: `uniform`, the plain base model, and `recipe`, the 2022 recipe on every year (monthly availability caps, daily gas, PL coal price). `experiments/extract_set.sh` now takes a variant and extracted them into `data/tables-uniform` and `data/tables-recipe`; `data/tables-master` is the master set plus its 2025 run. Raw median MAE:
+
+| set | 2019 | 2020 | 2021 | 2022 | 2023 | 2024 | 2025 |
+|---|---|---|---|---|---|---|---|
+| master | 7.89 | 9.36 | 25.68 | 57.57 | 20.96 | 24.07 | 25.01 |
+| uniform | 7.89 | 9.36 | 25.69 | 92.30 | 21.31 | 22.84 | 24.94 |
+| recipe | 9.98 | 11.16 | 24.91 | 57.76 | 25.27 | 25.63 | 24.11 |
+
+Default `lgbm`, skill against the raw MAE of the same set (E130–E141), and with reservoir filling (E142–E147):
+
+| set | year mean / worst | forward mean / worst |
+|---|---|---|
+| master | 0.122 / −0.068 | 0.064 / −0.132 |
+| uniform | 0.140 / 0.056 | 0.088 / −0.077 |
+| recipe | 0.187 / −0.009 | 0.160 / 0.009 |
+| recipe + reservoir | 0.203 / −0.005 | 0.168 / −0.021 |
+| master, no 2022 | 0.146 / 0.079 | 0.097 / −0.077 |
+| master, no 2022, + reservoir | 0.173 / 0.080 | 0.104 / −0.029 |
+| uniform, no 2022 | 0.139 / 0.081 | 0.086 / −0.077 |
+| recipe, no 2022 | 0.218 / 0.125 | 0.186 / 0.131 |
+| **recipe, no 2022, + reservoir** | **0.233 / 0.127** | **0.202 / 0.127** |
+
+Skill flatters the recipe, whose raw prices are too high in normal years: part of its skill is the correction taking that bias out again. The fair comparison is the corrected MAE itself. `ppf evaluate` per set (`results/round16/`), median over the buses all three sets score (master also scores PL00 in 2020 and AL00, ME00, MK00, XK00 in 2023–2024), mean over years:
+
+| | year, all | forward, all | year, no 2022 | forward, no 2022 |
+|---|---|---|---|---|
+| master raw | 24.20 | 26.92 | 18.64 | 20.79 |
+| master + correction | 22.72 | 27.04 | 16.40 | 19.57 |
+| uniform + correction | 25.23 | 29.54 | 16.41 | 19.58 |
+| recipe + correction | **22.21** | **24.84** | **16.31** | **18.46** |
+
+- **The recipe set gives the best corrected prices** in every column. Its gain is in the crisis years: 2021 forward 21.32 against 27.66 on master, 2022 57.24 against 65.19. In normal years master + correction stays 0.3–0.8 better (2019, 2020, 2023).
+- **With the recipe the correction carries over**: every held-out year improves in both splits, the forward worst is +0.009 with 2022 and +0.131 without, where master never got above −0.077. A correction trained on years that err alike is the consistency round 14 asked for.
+- On master, the correction learned on earlier years makes the forward split worse overall (27.04 against raw 26.92), because nothing before 2021 teaches it a gas crisis.
+- `uniform` is master with a broken 2022 (gas under-dispatch, 92.30): no gain, as the backcast's own comparison found.
+- Reservoir filling adds +0.015 to +0.027 on the year mean of every set. With 2022 on the forward split it costs 2022 (57.24 → 58.99, trained on 2019–2021 only).
+- Best so far: recipe tables with reservoir filling, 0.233 / 0.202 mean skill without 2022. Against master's raw MAE the corrected recipe prices are 8 % (year) and 8 % (forward) better with 2022, 12.5 % and 11 % without.

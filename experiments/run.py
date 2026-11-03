@@ -30,6 +30,9 @@ from pypsa_price_forecaster.evaluate import (
     scores,
 )
 
+# the network features of round 5, the defaults before reservoir filling joined them,
+# so that the experiments below keep their meaning
+DEFAULT_FEATURES = [f for f in DEFAULT_FEATURES if f != "reservoir_anomaly"]
 TABLES = sorted(Path("data/tables").glob("*.parquet"))
 RESULTS = Path("experiments/results.csv")
 NO_MONTH = [f for f in DEFAULT_FEATURES if f != "month"]
@@ -519,6 +522,26 @@ for i, (key, excluded) in enumerate(
             table_dir=TABLE_SETS[key],
             exogenous=EXOGENOUS,
             exclude_years=excluded,
+        )
+# Round 17: the model's own hydro reservoirs instead of the observed filling, on the
+# recipe tables with 2022, against E138/E139 (none) and E144/E145 (observed)
+MODEL_RESERVOIRS = "data/reservoirs_model.parquet"
+for i, added in enumerate(
+    [
+        ["reservoir_share_model"],
+        ["reservoir_anomaly_model"],
+        ["inflow_90d_model"],
+        ["reservoir_anomaly_model", "inflow_90d_model"],
+    ]
+):
+    for k, split in enumerate(["year", "forward"]):
+        name = f"{split}_recipe_" + "_".join(a.removesuffix("_model") for a in added)
+        EXPERIMENTS[f"E{148 + 2 * i + k}_{name}"] = dict(
+            split=split,
+            features=DEFAULT_FEATURES + added,
+            models=LGBM,
+            table_dir=TABLE_SETS["recipe"],
+            exogenous=MODEL_RESERVOIRS,
         )
 MODELS = ["pypsa", "bus_bias", "linear", "lgbm"]
 RESULTS_BY_YEAR = Path("experiments/results_by_year.csv")

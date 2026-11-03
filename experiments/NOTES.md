@@ -577,3 +577,21 @@ Skill flatters the recipe, whose raw prices are too high in normal years: part o
 - `data/tables` is now the recipe set (`backcast-<year>-recipe`, 2019–2025), and `reservoir_anomaly` is a default feature, so the default model needs `--variables data/exogenous.parquet` (the `report` task passes it).
 - 2022 is back in the report. Training on 2022 hardly moves the other recipe years (year split: 2021 20.98 with against 21.80 without, 2019 6.68 against 6.49, the rest within 0.2), so the round 13 reason to leave it out, one fixed year among unfixed ones, is gone. The correction does nothing for 2022 itself (57.76 raw, 58.29 corrected on the year split).
 - The ablation of the report only adds features whose variables the table holds (`has_variables`), so it covers temperature and runoff but not the forecast errors.
+
+## Round 17: the model's own hydro reservoirs instead of the observed filling (2026-11-03)
+
+`reservoir_anomaly` is observed data, so a scenario run can only take 0. Could the solved network give the same signal? `experiments/model_reservoirs.py` builds, per zone and day from the hydro storage units of the recipe networks: the state of charge as share of the energy capacity (`reservoir_share_model`), that share minus the median of the same week over 2019–2025 (`reservoir_anomaly_model`), and the inflow of the past 90 days over its median of the same day (`inflow_90d_model`, years chained, the empty 29 February of the 8760-hour networks dropped). Default round 5 features plus each, recipe tables with 2022 (E148–E155), against none (E138/E139) and the observed filling (E144/E145):
+
+| added | year mean / worst | forward mean / worst |
+|---|---|---|
+| none | 0.187 / −0.009 | 0.160 / 0.009 |
+| observed `reservoir_anomaly` | **0.203** / −0.005 | **0.168** / −0.021 |
+| `reservoir_share_model` | 0.186 / −0.006 | 0.153 / −0.001 |
+| `reservoir_anomaly_model` | 0.189 / 0.011 | 0.154 / 0.002 |
+| `inflow_90d_model` | 0.180 / 0.006 | 0.149 / −0.013 |
+| `reservoir_anomaly_model` + `inflow_90d_model` | 0.184 / 0.012 | 0.146 / −0.009 |
+
+- **None of the model's variables helps**: within the noise on the year split, 0.006–0.014 worse forward. The observed filling stays the default.
+- The model's filling does not follow the real one: r = 0.10 between the model and the observed weekly anomaly. In Italy, Norway and Sweden the model anomaly is about 0 every year.
+- Two reasons in the backcast's hydro: some reservoirs are far too large to bind (ITCA and ITS1 `max_hours` ≈ 17,800, NOM1 39.5 TWh for 16.7 TWh inflow, all stay at 43–55 % the whole year), and every year is solved with a cyclic state of charge and free start level, so no year can start with reservoirs low after a dry one, which is what the market priced in 2022. Others (AT, CH, FR, PT, NOS2, ITN1) run from empty to full within the year.
+- The model's inflow tracks the cutout runoff (r = 0.58) and, like `runoff_90d` in round 15, adds nothing.

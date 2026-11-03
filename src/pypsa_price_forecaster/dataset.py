@@ -197,6 +197,10 @@ FEATURES: dict[str, Callable[[pd.DataFrame], pd.Series]] = {
     "hdd": lambda t: (15.5 - exogenous("temperature")(t)).clip(lower=0),
     "runoff_90d": exogenous("runoff_90d"),
     "reservoir_anomaly": exogenous("reservoir_anomaly"),
+    # the model's own hydro reservoirs, experiments/model_reservoirs.py (round 17)
+    "reservoir_share_model": exogenous("reservoir_share_model"),
+    "reservoir_anomaly_model": exogenous("reservoir_anomaly_model"),
+    "inflow_90d_model": exogenous("inflow_90d_model"),
     # load and supply of the table are zone totals, as the ENTSO-E forecasts
     "load_forecast_error": lambda t: exogenous("load_forecast")(t) / t.load - 1,
     "vres_forecast_error": lambda t: (
@@ -209,6 +213,9 @@ VARIABLES = {
     "hdd": "temperature",
     "runoff_90d": "runoff_90d",
     "reservoir_anomaly": "reservoir_anomaly",
+    "reservoir_share_model": "reservoir_share_model",
+    "reservoir_anomaly_model": "reservoir_anomaly_model",
+    "inflow_90d_model": "inflow_90d_model",
     "load_forecast_error": "load_forecast",
     "vres_forecast_error": "vres_forecast",
 }

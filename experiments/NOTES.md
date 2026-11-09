@@ -595,3 +595,28 @@ Skill flatters the recipe, whose raw prices are too high in normal years: part o
 - The model's filling does not follow the real one: r = 0.10 between the model and the observed weekly anomaly. In Italy, Norway and Sweden the model anomaly is about 0 every year.
 - Two reasons in the backcast's hydro: some reservoirs are far too large to bind (ITCA and ITS1 `max_hours` ≈ 17,800, NOM1 39.5 TWh for 16.7 TWh inflow, all stay at 43–55 % the whole year), and every year is solved with a cyclic state of charge and free start level, so no year can start with reservoirs low after a dry one, which is what the market priced in 2022. Others (AT, CH, FR, PT, NOS2, ITN1) run from empty to full within the year.
 - The model's inflow tracks the cutout runoff (r = 0.58) and, like `runoff_90d` in round 15, adds nothing.
+
+## Round 18: temperature, gas-scaled corrections and bands per price level on the recipe tables (2026-11-09)
+
+Recipe tables with 2022 (`data/tables`, the report), against the network-only defaults E138/E139. Skill per held-out year, mean / worst:
+
+| | year | forward |
+|---|---|---|
+| network only (E138/E139) | 0.187 / −0.009 | 0.160 / 0.009 |
+| + `temperature` (E156/E157) | **0.197** / −0.001 | **0.170** / −0.034 |
+| `lgbm_gas` (E158/E159) | 0.143 / −0.040 | 0.032 / −0.478 |
+| `lgbm_gas_clip` (E160/E161) | 0.146 / −0.020 | 0.114 / −0.017 |
+
+Seed noise, three seeds each (E165–E172 with `random_state` 1 and 2):
+
+| | year mean | year worst | forward mean | forward worst |
+|---|---|---|---|---|
+| network only | 0.184–0.187 | −0.009 to −0.007 | 0.154–0.162 | −0.002 to 0.009 |
+| + `temperature` | 0.197–0.199 | −0.001 to 0.004 | 0.160–0.170 | −0.048 to −0.034 |
+
+- **Temperature helps on the year split beyond the seeds**: every temperature seed beats every network-only seed (+0.012 on the seed average), and six of seven years improve, most 2024 (+0.034) and 2020 (+0.016); 2019 loses 0.009.
+- **Forward it lifts the mean by +0.006 on the seed average, inside the seed range, and always costs 2022** (skill 0.004 → −0.041, the model trained on 2019–2021 only). The other forward years gain 0.006–0.031. Unlike round 15 on the master tables, temperature no longer lowers the worst year on the year split; it still does on the forward split, through 2022.
+- `temperature` is the population-weighted daily mean per bus region from the backcast's own ERA5 cutout, so any run with a cutout has it.
+- **The gas-scaled corrections lose everywhere.** Scaling the residual by the gas price extrapolates when gas leaves the training range: forward 2021 goes from 0.144 to −0.478 (21.32 → 36.82 MAE). Clipping the scale limits the damage but stays below the plain correction in every year.
+- **Bands per price level are worse than one relative calibration.** Pinball skill against the point correction, mean / worst: year 0.154 / −0.078 (level, E162) against 0.175 / 0.009 (the report's bands); forward 0.152 / 0.055 (E164) against 0.191 / 0.162 (E163). Levels help only 2022 a little (80 % coverage 0.674 → 0.699, pinball 24.15 → 21.57) and cost the quiet years, where the high levels have few rows (2019 coverage 0.943, too wide).
+- Nothing adopted yet: temperature as a default would need the cutout variables for every table (`--variables`); left for decision.

@@ -540,6 +540,42 @@ for i, added in enumerate(
             table_dir=TABLE_SETS["recipe"],
             exogenous=MODEL_RESERVOIRS,
         )
+# Round 18: on the recipe tables with 2022 (data/tables, the report), against
+# E138/E139: temperature, the gas-scaled corrections, and bands per price level
+for k, split in enumerate(["year", "forward"]):
+    EXPERIMENTS[f"E{156 + k}_{split}_recipe_temperature"] = dict(
+        split=split,
+        features=DEFAULT_FEATURES + ["temperature"],
+        models=LGBM,
+        exogenous=EXOGENOUS,
+    )
+    for i, model in enumerate(["lgbm_gas", "lgbm_gas_clip"]):
+        EXPERIMENTS[f"E{158 + 2 * i + k}_{split}_recipe_{model}"] = dict(
+            split=split, features=DEFAULT_FEATURES, models=["pypsa", model]
+        )
+EXPERIMENTS |= {
+    "E162_year_bands_recipe_level": dict(
+        split="year", features=DEFAULT_FEATURES, bands={"by_level": True}
+    ),
+    "E163_forward_bands_recipe": dict(
+        split="forward", features=DEFAULT_FEATURES, bands={}
+    ),
+    "E164_forward_bands_recipe_level": dict(
+        split="forward", features=DEFAULT_FEATURES, bands={"by_level": True}
+    ),
+}
+# seed noise of E138/E139 and E156/E157: is the temperature gain real?
+for i, (key, extra) in enumerate(
+    {"recipe": [], "recipe_temperature": ["temperature"]}.items()
+):
+    for j, seed in enumerate([1, 2]):
+        for k, split in enumerate(["year", "forward"]):
+            EXPERIMENTS[f"E{165 + 4 * i + 2 * j + k}_{split}_{key}_seed{seed}"] = dict(
+                split=split,
+                features=DEFAULT_FEATURES + extra,
+                models=LGBM,
+                params={"random_state": seed},
+            ) | ({"exogenous": EXOGENOUS} if extra else {})
 MODELS = ["pypsa", "bus_bias", "linear", "lgbm"]
 RESULTS_BY_YEAR = Path("experiments/results_by_year.csv")
 RESULTS_BANDS = Path("experiments/results_bands.csv")

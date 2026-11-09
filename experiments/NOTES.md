@@ -620,3 +620,38 @@ Seed noise, three seeds each (E165–E172 with `random_state` 1 and 2):
 - **The gas-scaled corrections lose everywhere.** Scaling the residual by the gas price extrapolates when gas leaves the training range: forward 2021 goes from 0.144 to −0.478 (21.32 → 36.82 MAE). Clipping the scale limits the damage but stays below the plain correction in every year.
 - **Bands per price level are worse than one relative calibration.** Pinball skill against the point correction, mean / worst: year 0.154 / −0.078 (level, E162) against 0.175 / 0.009 (the report's bands); forward 0.152 / 0.055 (E164) against 0.191 / 0.162 (E163). Levels help only 2022 a little (80 % coverage 0.674 → 0.699, pinball 24.15 → 21.57) and cost the quiet years, where the high levels have few rows (2019 coverage 0.943, too wide).
 - Nothing adopted yet: temperature as a default would need the cutout variables for every table (`--variables`); left for decision.
+
+## Round 19: correction share, tree size, heating degree days and the learning curve on the recipe tables (2026-11-09)
+
+**Correction share.** `experiments/shrink_sweep.py` rescales the stored held-out corrections of the band runs E162/E163, so no retraining; at 0.7 it reproduces E138 exactly. Mean skill:
+
+| share | 0.5 | 0.6 | 0.7 | 0.8 | 0.9 | 1.0 |
+|---|---|---|---|---|---|---|
+| year | 0.165 | 0.177 | **0.187** | 0.186 | 0.179 | 0.169 |
+| forward (2021–2025) | 0.109 | 0.115 | **0.126** | 0.125 | 0.126 | 0.126 |
+
+`SHRINK = 0.7` stays.
+
+**Tree size and heating degree days**, mean / worst, against E138/E139 and their seeds (E165–E168):
+
+| | year | forward |
+|---|---|---|
+| default trees, 3 seeds | 0.184–0.187 / −0.009 to −0.007 | 0.154–0.162 / −0.002 to 0.009 |
+| medium trees (E173/E174) | 0.177 / −0.012 | 0.150 / 0.004 |
+| larger trees, 3 seeds (E175/E176, E179–E182) | **0.190–0.197** / 0.002 to 0.009 | 0.161–0.168 / 0.001 to 0.013 |
+| + `hdd` (E177/E178) | 0.199 / 0.011 | 0.169 / −0.028 |
+
+- **Larger trees** (127 leaves, ≥ 25 rows per leaf, 1200 trees) now beat the default on the year split beyond the seeds (+0.008 on the seed average, every seed above every default seed, worst year above 0), and +0.005 forward, inside the range. On the master tables they lost (round 12); seven recipe years with 2022 hold more detail worth fitting. Training takes about 2.5 times as long. Not adopted yet.
+- **`hdd` is temperature again**: the same years gain and forward 2022 loses the same way (0.009 → −0.028). The loss is not the season proxy of the full temperature range.
+
+**Learning curve** (`experiments/learning_curve.py --out experiments/results_learning_curve_recipe.csv`, 2022 left out): mean skill over every training subset of the other years.
+
+| training years | 1 | 2 | 3 | 4 | 5 |
+|---|---|---|---|---|---|
+| recipe tables, mean | 0.100 | 0.163 | 0.184 | 0.206 | 0.218 |
+| recipe tables, worst year | 0.035 | 0.088 | 0.118 | 0.124 | 0.125 |
+| master tables (earlier run), mean | 0.019 | 0.096 | 0.127 | 0.145 | – |
+
+- Skill still grows with each year, but by less: +0.063, +0.021, +0.022, +0.012. On a log trend, four more backcast years would add about +0.04, to some 0.26: more years help, they will not reach 0.5.
+- 2019 and 2020 keep climbing (0.349, 0.306 from five years); 2021, 2023 and 2025 are flat after two or three years, their errors are not in other years.
+- The recipe tables are better at every training size, by 0.06–0.08.

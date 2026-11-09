@@ -25,6 +25,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("tables", nargs="+")
     parser.add_argument("--exclude-year", type=int, action="append", default=[])
+    parser.add_argument("--out", type=Path, default=RESULTS)
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
 
@@ -54,7 +55,7 @@ def main() -> None:
                         "skill": 1 - mae["lgbm"] / mae["pypsa"],
                     }
                 )
-                pd.DataFrame(rows).to_csv(RESULTS, index=False)
+                pd.DataFrame(rows).to_csv(args.out, index=False)
 
     result = pd.DataFrame(rows)
     per_year = result.groupby(["n_train", "test_year"]).skill.mean().unstack()

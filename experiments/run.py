@@ -653,6 +653,29 @@ def run_bands(name: str, table: pd.DataFrame) -> pd.DataFrame:
     )
 
 
+# Round 19: tree size and heating degree days on the recipe tables, against E138/E139
+for k, split in enumerate(["year", "forward"]):
+    for i, (key, params) in enumerate({"medium": MEDIUM, "larger": LARGER}.items()):
+        EXPERIMENTS[f"E{173 + 2 * i + k}_{split}_recipe_{key}"] = dict(
+            split=split, features=DEFAULT_FEATURES, models=LGBM, params=params
+        )
+    EXPERIMENTS[f"E{177 + k}_{split}_recipe_hdd"] = dict(
+        split=split,
+        features=DEFAULT_FEATURES + ["hdd"],
+        models=LGBM,
+        exogenous=EXOGENOUS,
+    )
+
+# seed noise of E175/E176, the larger trees
+for j, seed in enumerate([1, 2]):
+    for k, split in enumerate(["year", "forward"]):
+        EXPERIMENTS[f"E{179 + 2 * j + k}_{split}_recipe_larger_seed{seed}"] = dict(
+            split=split,
+            features=DEFAULT_FEATURES,
+            models=LGBM,
+            params=LARGER | {"random_state": seed},
+        )
+
 if __name__ == "__main__":
     table = read_tables(TABLES)
     for name in sys.argv[1:]:

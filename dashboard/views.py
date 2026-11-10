@@ -55,6 +55,11 @@ def provenance(report: Report) -> str:
         f"Report of {meta['created'][:10]} at commit {commit} · "
         f"runs {', '.join(meta['runs'])} · {meta['split']} split, {meta['folds']} folds · "
         f"{meta['buses']} zones with market prices"
+        + (
+            f" · left out: {', '.join(map(str, meta['excluded_years']))}"
+            if meta.get("excluded_years")
+            else ""
+        )
     )
 
 
@@ -73,6 +78,11 @@ def overview() -> None:
         "The correction learns the gap between the market price and the PyPSA price "
         f"from hourly features of the solved network. {SPLIT_TEXT[report.meta['split']]}"
     )
+    if 2022 in report.meta.get("excluded_years", []):
+        st.info(
+            "2022 is left out of training and scoring. Details in the experiment log, "
+            "rounds 13 and 16."
+        )
     scores = report.scores
     raw, corrected = scores.loc["pypsa"], scores.loc["lgbm"]
     tiles = [

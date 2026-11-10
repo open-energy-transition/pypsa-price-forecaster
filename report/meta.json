@@ -1,15 +1,16 @@
 {
-  "created": "2026-10-30T12:30:41+00:00",
-  "commit": "79695db",
+  "created": "2026-11-03T21:15:47+00:00",
+  "commit": "32ee81c",
   "dirty": false,
   "version": "0.1.0",
   "runs": [
-    "backcast-2019",
-    "backcast-2020",
-    "backcast-2021",
-    "backcast-2022",
-    "backcast-2023",
-    "backcast-2024"
+    "backcast-2019-recipe",
+    "backcast-2020-recipe",
+    "backcast-2021-recipe",
+    "backcast-2022-recipe",
+    "backcast-2023-recipe",
+    "backcast-2024-recipe",
+    "backcast-2025-recipe"
   ],
   "years": [
     2019,
@@ -17,12 +18,13 @@
     2021,
     2022,
     2023,
-    2024
+    2024,
+    2025
   ],
   "split": "year",
-  "folds": 6,
+  "folds": 7,
   "buses": 43,
-  "hours": 2180990,
+  "hours": 2557670,
   "features": [
     "model_price",
     "margin_domestic",
@@ -52,9 +54,10 @@
     "shrink": 0.7
   },
   "seed_mae": [
-    18.9262,
-    18.9875,
-    18.8763
+    19.2963,
+    19.2926,
+    19.5149
   ],
-  "bands": true
+  "bands": true,
+  "excluded_years": []
 }

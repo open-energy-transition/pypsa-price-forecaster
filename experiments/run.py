@@ -17,7 +17,12 @@ from pathlib import Path
 
 import pandas as pd
 
-from pypsa_price_forecaster.dataset import DEFAULT_FEATURES, TARGET, read_tables
+from pypsa_price_forecaster.dataset import (
+    DEFAULT_FEATURES,
+    TARGET,
+    attach_exogenous,
+    read_tables,
+)
 from pypsa_price_forecaster.evaluate import (
     band_scores,
     cross_validate,
@@ -347,19 +352,253 @@ EXPERIMENTS |= {
         split="forward", features=DEFAULT_FEATURES, models=LGBM, params=LARGER
     ),
 }
+# Round 13: all six years rerun upstream with the same fixes (issue #26 switches),
+# extracted with experiments/extract_set.sh into data/tables-consistent
+CONSISTENT = "data/tables-consistent"
+EXPERIMENTS |= {
+    "E86_year_consistent": dict(
+        split="year", features=DEFAULT_FEATURES, table_dir=CONSISTENT
+    ),
+    "E87_forward_consistent": dict(
+        split="forward", features=DEFAULT_FEATURES, table_dir=CONSISTENT
+    ),
+    "E88_year_bands_consistent": dict(
+        split="year", features=DEFAULT_FEATURES, bands={}, table_dir=CONSISTENT
+    ),
+    "E89_forward_bands_consistent": dict(
+        split="forward", features=DEFAULT_FEATURES, bands={}, table_dir=CONSISTENT
+    ),
+}
+# without 2022, now the only year with the issue #26 fixes upstream
+EXPERIMENTS |= {
+    "E90_year_consistent_no2022": dict(
+        split="year",
+        features=DEFAULT_FEATURES,
+        table_dir=CONSISTENT,
+        exclude_years=[2022],
+    ),
+    "E91_forward_consistent_no2022": dict(
+        split="forward",
+        features=DEFAULT_FEATURES,
+        table_dir=CONSISTENT,
+        exclude_years=[2022],
+    ),
+}
+# Round 15: variables from outside the network, built with `ppf exogenous` into
+# data/exogenous.parquet (temperature, runoff, reservoir filling) or computed
+# from the gas cost of the table (gas momentum); 2022 left out as in E90/E91
+EXOGENOUS = "data/exogenous.parquet"
+ROUND15 = {
+    "gas_change": ["gas_change_30d"],
+    "gas_vol": ["gas_vol_30d"],
+    "temperature": ["temperature"],
+    "runoff": ["runoff_90d"],
+    "reservoir": ["reservoir_anomaly"],
+}
+for i, (key, extra) in enumerate(ROUND15.items()):
+    for j, split in enumerate(["year", "forward"]):
+        EXPERIMENTS[f"E{92 + 2 * i + j}_{split}_{key}"] = dict(
+            split=split,
+            features=DEFAULT_FEATURES + extra,
+            models=LGBM,
+            exogenous=EXOGENOUS,
+            exclude_years=[2022],
+        )
+# seed noise of round 15, and the weather variables together
+ROUND15B = {
+    "consistent": ([], None),
+    "reservoir": (["reservoir_anomaly"], EXOGENOUS),
+}
+for i, (key, (extra, exogenous)) in enumerate(ROUND15B.items()):
+    for j, seed in enumerate([1, 2]):
+        for k, split in enumerate(["year", "forward"]):
+            EXPERIMENTS[f"E{102 + 4 * i + 2 * j + k}_{split}_{key}_seed{seed}"] = dict(
+                split=split,
+                features=DEFAULT_FEATURES + extra,
+                models=LGBM,
+                exclude_years=[2022],
+                params={"random_state": seed},
+            ) | ({"exogenous": exogenous} if exogenous else {"table_dir": CONSISTENT})
+for k, split in enumerate(["year", "forward"]):
+    EXPERIMENTS[f"E{110 + k}_{split}_weather"] = dict(
+        split=split,
+        features=DEFAULT_FEATURES + ["reservoir_anomaly", "runoff_90d", "temperature"],
+        models=LGBM,
+        exogenous=EXOGENOUS,
+        exclude_years=[2022],
+    )
+# E92-E111 used a reservoir normal of 2015-2024, which includes the held-out
+# year (data/exogenous_allyears_normal.parquet); from here on the normal is
+# 2015-2018, before any backcast year
+for k, split in enumerate(["year", "forward"]):
+    EXPERIMENTS[f"E{112 + k}_{split}_reservoir_past_normal"] = dict(
+        split=split,
+        features=DEFAULT_FEATURES + ["reservoir_anomaly"],
+        models=LGBM,
+        exogenous=EXOGENOUS,
+        exclude_years=[2022],
+    )
+    EXPERIMENTS[f"E{114 + k}_{split}_weather_past_normal"] = dict(
+        split=split,
+        features=DEFAULT_FEATURES + ["reservoir_anomaly", "runoff_90d", "temperature"],
+        models=LGBM,
+        exogenous=EXOGENOUS,
+        exclude_years=[2022],
+    )
+# E90/E91 again: they ran before the 2024 table was extracted anew, so the
+# baseline of round 15 is this and E102-E105 on the same tables
+for k, split in enumerate(["year", "forward"]):
+    EXPERIMENTS[f"E{116 + k}_{split}_consistent_seed0"] = dict(
+        split=split,
+        features=DEFAULT_FEATURES,
+        models=LGBM,
+        table_dir=CONSISTENT,
+        exclude_years=[2022],
+    )
+# the day-ahead forecasts the market cleared on (`ppf forecasts`) on top of reservoirs
+FORECASTS = "data/forecasts.parquet"
+for k, split in enumerate(["year", "forward"]):
+    EXPERIMENTS[f"E{118 + k}_{split}_reservoir_forecasts"] = dict(
+        split=split,
+        features=DEFAULT_FEATURES
+        + ["reservoir_anomaly", "load_forecast_error", "vres_forecast_error"],
+        models=LGBM,
+        exogenous=[EXOGENOUS, FORECASTS],
+        exclude_years=[2022],
+    )
+for i, seed in enumerate([1, 2]):
+    for k, split in enumerate(["year", "forward"]):
+        EXPERIMENTS[f"E{120 + 2 * i + k}_{split}_reservoir_forecasts_seed{seed}"] = (
+            EXPERIMENTS[f"E{118 + k}_{split}_reservoir_forecasts"]
+            | {"params": {"random_state": seed}}
+        )
+for i, forecast in enumerate(["load_forecast_error", "vres_forecast_error"]):
+    for k, split in enumerate(["year", "forward"]):
+        EXPERIMENTS[f"E{124 + 2 * i + k}_{split}_reservoir_{forecast[:4]}"] = dict(
+            split=split,
+            features=DEFAULT_FEATURES + ["reservoir_anomaly", forecast],
+            models=LGBM,
+            exogenous=[EXOGENOUS, FORECASTS],
+            exclude_years=[2022],
+        )
+# placebo: each bus keeps only its median forecast error over all years, so
+# the forecasts can only tell zones apart (data/forecasts_placebo.parquet)
+for k, split in enumerate(["year", "forward"]):
+    EXPERIMENTS[f"E{128 + k}_{split}_reservoir_forecasts_placebo"] = EXPERIMENTS[
+        f"E{118 + k}_{split}_reservoir_forecasts"
+    ] | {"exogenous": [EXOGENOUS, "data/forecasts_placebo.parquet"]}
+# Round 16: every year 2019-2025 rerun upstream on one identical config, as
+# the plain base model (uniform) and with the 2022 recipe on every year
+# (recipe), against master with its 2025 run (exp/backcast-uniform-config)
+TABLE_SETS = {
+    "master": "data/tables-master",
+    "uniform": "data/tables-uniform",
+    "recipe": "data/tables-recipe",
+}
+for i, (key, table_dir) in enumerate(TABLE_SETS.items()):
+    for j, excluded in enumerate([[], [2022]]):
+        for k, split in enumerate(["year", "forward"]):
+            name = f"{split}_{key}" + ("_no2022" if excluded else "")
+            EXPERIMENTS[f"E{130 + 4 * i + 2 * j + k}_{name}"] = dict(
+                split=split,
+                features=DEFAULT_FEATURES,
+                models=LGBM,
+                table_dir=table_dir,
+                exclude_years=excluded,
+            )
+# reservoir filling on the round 16 sets (data/exogenous.parquet now 2019-2025)
+for i, (key, excluded) in enumerate(
+    [("master", [2022]), ("recipe", []), ("recipe", [2022])]
+):
+    for k, split in enumerate(["year", "forward"]):
+        name = f"{split}_{key}" + ("_no2022" if excluded else "") + "_reservoir"
+        EXPERIMENTS[f"E{142 + 2 * i + k}_{name}"] = dict(
+            split=split,
+            features=DEFAULT_FEATURES + ["reservoir_anomaly"],
+            models=LGBM,
+            table_dir=TABLE_SETS[key],
+            exogenous=EXOGENOUS,
+            exclude_years=excluded,
+        )
+# Round 17: the model's own hydro reservoirs instead of the observed filling, on the
+# recipe tables with 2022, against E138/E139 (none) and E144/E145 (observed)
+MODEL_RESERVOIRS = "data/reservoirs_model.parquet"
+for i, added in enumerate(
+    [
+        ["reservoir_share_model"],
+        ["reservoir_anomaly_model"],
+        ["inflow_90d_model"],
+        ["reservoir_anomaly_model", "inflow_90d_model"],
+    ]
+):
+    for k, split in enumerate(["year", "forward"]):
+        name = f"{split}_recipe_" + "_".join(a.removesuffix("_model") for a in added)
+        EXPERIMENTS[f"E{148 + 2 * i + k}_{name}"] = dict(
+            split=split,
+            features=DEFAULT_FEATURES + added,
+            models=LGBM,
+            table_dir=TABLE_SETS["recipe"],
+            exogenous=MODEL_RESERVOIRS,
+        )
+# Round 18: on the recipe tables with 2022 (data/tables, the report), against
+# E138/E139: temperature, the gas-scaled corrections, and bands per price level
+for k, split in enumerate(["year", "forward"]):
+    EXPERIMENTS[f"E{156 + k}_{split}_recipe_temperature"] = dict(
+        split=split,
+        features=DEFAULT_FEATURES + ["temperature"],
+        models=LGBM,
+        exogenous=EXOGENOUS,
+    )
+    for i, model in enumerate(["lgbm_gas", "lgbm_gas_clip"]):
+        EXPERIMENTS[f"E{158 + 2 * i + k}_{split}_recipe_{model}"] = dict(
+            split=split, features=DEFAULT_FEATURES, models=["pypsa", model]
+        )
+EXPERIMENTS |= {
+    "E162_year_bands_recipe_level": dict(
+        split="year", features=DEFAULT_FEATURES, bands={"by_level": True}
+    ),
+    "E163_forward_bands_recipe": dict(
+        split="forward", features=DEFAULT_FEATURES, bands={}
+    ),
+    "E164_forward_bands_recipe_level": dict(
+        split="forward", features=DEFAULT_FEATURES, bands={"by_level": True}
+    ),
+}
+# seed noise of E138/E139 and E156/E157: is the temperature gain real?
+for i, (key, extra) in enumerate(
+    {"recipe": [], "recipe_temperature": ["temperature"]}.items()
+):
+    for j, seed in enumerate([1, 2]):
+        for k, split in enumerate(["year", "forward"]):
+            EXPERIMENTS[f"E{165 + 4 * i + 2 * j + k}_{split}_{key}_seed{seed}"] = dict(
+                split=split,
+                features=DEFAULT_FEATURES + extra,
+                models=LGBM,
+                params={"random_state": seed},
+            ) | ({"exogenous": EXOGENOUS} if extra else {})
 MODELS = ["pypsa", "bus_bias", "linear", "lgbm"]
 RESULTS_BY_YEAR = Path("experiments/results_by_year.csv")
 RESULTS_BANDS = Path("experiments/results_bands.csv")
 COLUMNS = ["mae", "r", "abs_bias", "mae_top5", "mae_low5"]
 
 
+def spec_table(spec: dict, table: pd.DataFrame) -> pd.DataFrame:
+    """Return the table of an experiment: all runs of `table_dir`, or `table` with runs replaced by `tables`."""
+    if "table_dir" in spec:
+        return read_tables(sorted(Path(spec["table_dir"]).glob("*.parquet")))
+    if "tables" in spec:
+        return read_tables([spec["tables"].get(path.stem, path) for path in TABLES])
+    return table
+
+
 def run(name: str, table: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Return the scores of experiment `name` over all years and per year."""
     spec = {"folds": 4, "models": MODELS} | EXPERIMENTS[name]
-    if "tables" in spec:
-        # runs replaced by the tables of other backcast runs
-        table = read_tables([spec["tables"].get(path.stem, path) for path in TABLES])
+    table = spec_table(spec, table)
     table = table[~table.year.isin(spec.get("exclude_years", []))]
+    exogenous = spec.get("exogenous", [])
+    for path in [exogenous] if isinstance(exogenous, str) else exogenous:
+        table = attach_exogenous(table, pd.read_parquet(path))
     start = time.time()
     predictions = cross_validate(
         table,
@@ -396,6 +635,7 @@ def run(name: str, table: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
 def run_bands(name: str, table: pd.DataFrame) -> pd.DataFrame:
     """Return the band scores per held-out year of experiment `name`, keeping the bands in ``results/``."""
     spec = EXPERIMENTS[name]
+    table = spec_table(spec, table)
     start = time.time()
     bands = cross_validate_bands(
         table, "lgbm", spec["features"], spec["split"], **spec["bands"]
@@ -412,6 +652,46 @@ def run_bands(name: str, table: pd.DataFrame) -> pd.DataFrame:
         .assign(experiment=name, split=spec["split"], seconds=seconds)
     )
 
+
+# Round 19: tree size and heating degree days on the recipe tables, against E138/E139
+for k, split in enumerate(["year", "forward"]):
+    for i, (key, params) in enumerate({"medium": MEDIUM, "larger": LARGER}.items()):
+        EXPERIMENTS[f"E{173 + 2 * i + k}_{split}_recipe_{key}"] = dict(
+            split=split, features=DEFAULT_FEATURES, models=LGBM, params=params
+        )
+    EXPERIMENTS[f"E{177 + k}_{split}_recipe_hdd"] = dict(
+        split=split,
+        features=DEFAULT_FEATURES + ["hdd"],
+        models=LGBM,
+        exogenous=EXOGENOUS,
+    )
+
+# seed noise of E175/E176, the larger trees
+for j, seed in enumerate([1, 2]):
+    for k, split in enumerate(["year", "forward"]):
+        EXPERIMENTS[f"E{179 + 2 * j + k}_{split}_recipe_larger_seed{seed}"] = dict(
+            split=split,
+            features=DEFAULT_FEATURES,
+            models=LGBM,
+            params=LARGER | {"random_state": seed},
+        )
+
+# Round 20: temperature replaced by its normal for the day of the year (leave one
+# year out), against E156/E157: season signal or actual weather?
+TEMPERATURE_NORMAL = "data/temperature_normal.parquet"
+for k, split in enumerate(["year", "forward"]):
+    EXPERIMENTS[f"E{183 + k}_{split}_recipe_temperature_normal"] = dict(
+        split=split,
+        features=DEFAULT_FEATURES + ["temperature"],
+        models=LGBM,
+        exogenous=TEMPERATURE_NORMAL,
+    )
+
+# season without weather or zone: the same smooth winter signal for every bus
+for k, split in enumerate(["year", "forward"]):
+    EXPERIMENTS[f"E{185 + k}_{split}_recipe_winter"] = dict(
+        split=split, features=DEFAULT_FEATURES + ["winter"], models=LGBM
+    )
 
 if __name__ == "__main__":
     table = read_tables(TABLES)

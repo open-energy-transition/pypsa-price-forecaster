@@ -51,7 +51,7 @@ def test_build_table_reads_network_and_prices(run_files):
 
 def test_unknown_feature_raises(network):
     with pytest.raises(ValueError, match="Unknown features"):
-        feature_matrix(extract(network), ["temperature"])
+        feature_matrix(extract(network), ["moon_phase"])
 
 
 def test_extract_reads_solved_dispatch_flows_and_costs(network):

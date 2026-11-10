@@ -402,3 +402,274 @@ Simpler trees carry over to unseen years worse, not better: the 70 % shrink alre
 | E54/E55 | default | **0.157 / 0.084** | 0.104 / −0.069 |
 
 Worse on the year split, even forward. **The default tree size is the best of the four sizes** on held-out years.
+
+## Round 13: the backcast runs of 2026-11-02 (2026-11-02)
+
+All six years were rerun upstream on the same code (pypsa-eur-backcast with the issue #26 branch). The switches of issue #26 are only on for 2022: monthly coal, lignite, biomass and waste availability, daily gas and country-specific coal prices. The other five years are unchanged within 0.05 EUR/MWh of raw median MAE. 2022 falls from 92.4 to 57.6.
+
+From this round on, `data/tables` holds these runs, extracted with `experiments/extract_set.sh` against the backcast's own `day_ahead_prices.csv` (identical to the ENTSO-E prices of the earlier tables). The tables of rounds 2–12 are in `data/tables-2026-10-29`.
+
+### Point correction
+
+| id | training | year | year, vs original raw | forward |
+|---|---|---|---|---|
+| E54/E55 | old tables | 0.157 / 0.084 | 0.157 / 0.084 | 0.104 / −0.069 |
+| E86/E87 | new tables | 0.090 / −0.117 | 0.161 / 0.072 | 0.037 / −0.145 |
+| E90/E91 | new tables without 2022 | 0.150 / 0.068 | – | 0.082 / −0.077 |
+
+Corrected MAE per held-out year, E86: `7.0, 7.0, 22.5, 64.3, 19.5, 20.7` (raw `7.9, 9.4, 25.7, 57.6, 21.0, 22.9`).
+
+Skill on the five other years, year split:
+
+| training | 2019 | 2020 | 2021 | 2023 | 2024 | mean |
+|---|---|---|---|---|---|---|
+| old (unfixed) 2022 | 0.159 | 0.230 | 0.190 | 0.084 | 0.144 | 0.162 |
+| fixed 2022 | 0.117 | 0.249 | 0.123 | 0.070 | 0.097 | 0.131 |
+| no 2022 | 0.192 | 0.277 | 0.100 | 0.068 | 0.111 | 0.150 |
+
+On the forward split the four other years score 0.082 with and without the fixed 2022.
+
+- **The correction makes the fixed 2022 worse** (57.6 raw, 64.3 corrected): the other years still teach it to raise prices that 2022 no longer underprices.
+- **The fixed 2022 also hurts the other years** in training (0.150 → 0.131 on the year split). The old 2022 helped them, as it shares the underpricing of 2021.
+- **2021 is the inconsistent year now**: in its fourth quarter the model makes 40 TWh of gas against 130 in ENTSO-E and prices 37 EUR/MWh too low, the pattern the 2022 fix removed. 2024 makes 0.74 of the ENTSO-E gas.
+- **The report leaves 2022 out** (`ppf report --exclude-year 2022`, in the `report` task) until the issue #26 switches cover the other years; then 2022 goes back in.
+
+### Price bands
+
+| id | tables | year | forward |
+|---|---|---|---|
+| E78/E79 | old tables | 0.151 / 0.031 | 0.169 / 0.155 |
+| E88/E89 | new tables | **0.190 / 0.066** | **0.190 / 0.140** |
+
+Pinball skill, mean / worst. With the fixed 2022, its band holds 71 % of hours (57 % before) and 10 % fall above it (34 %). The bands gain where the point correction loses, as the relative band follows the level of the new 2022.
+
+## Round 14: does the correction need more years? (2026-11-02)
+
+`experiments/learning_curve.py` predicts each of 2019, 2020, 2021, 2023 and 2024 (the round 13 tables, 2022 left out) from every subset of one to four of the other years: 75 fits with the default `lgbm`. Results per fit in `experiments/results_learning_curve.csv`.
+
+Skill per held-out year, mean over the training subsets of each size:
+
+| training years | 2019 | 2020 | 2021 | 2023 | 2024 | mean | worst |
+|---|---|---|---|---|---|---|---|
+| 1 | −0.107 | 0.079 | 0.048 | 0.010 | 0.064 | 0.019 | −0.107 |
+| 2 | 0.057 | 0.206 | 0.084 | 0.040 | 0.092 | 0.096 | 0.040 |
+| 3 | 0.104 | 0.238 | 0.100 | 0.060 | 0.131 | 0.127 | 0.060 |
+| 4 | 0.178 | 0.267 | 0.088 | 0.060 | 0.130 | 0.145 | 0.060 |
+
+- **The gain per added year shrinks**: +0.077, +0.031, +0.018 on the mean, nothing on the worst year from three to four. Extrapolated, a fifth and sixth year of the same quality add about 0.01–0.02 each.
+- **Which years matters more than how many.** The best three-year subset beats all four years for 2019 (0.192), 2021 (0.149), 2023 (0.093) and 2024 (0.139). Adding 2023 to 2019+2020+2024 lowers 2021 from 0.149 to 0.088, and adding 2023 to 2020+2021+2024 lowers 2019 from 0.192 to 0.178. A year whose backcast errs differently teaches the wrong correction.
+- 2021 and 2023 stay at 0.06–0.10 whatever the training: their errors are not shared by any other year.
+- More years of the current backcast will not get near 0.5. Years with consistent upstream fixes (issue #26 on every year) should come first; 2025 is then the most useful new year, as the closest to future runs.
+
+## Round 15: variables from outside the network (2026-11-02)
+
+Does anything the network does not know track the error the correction leaves? `experiments/exogenous_check.py` first correlated the out-of-sample residual of the report (observed − `lgbm`, mean per zone and day) with candidate daily variables (Spearman):
+
+| variable | daily | within zone-year | zone-month |
+|---|---|---|---|
+| temperature (population weighted, ERA5 cutout) | 0.215 | 0.167 | 0.292 |
+| temperature anomaly vs the six years | −0.043 | −0.019 | −0.068 |
+| runoff of the past 90 days / 1991–2020 normal | −0.116 | −0.142 | −0.136 |
+| runoff of the past 365 days / normal | −0.017 | −0.079 | −0.003 |
+| gas cost change over 30 days | 0.187 | 0.142 | 0.229 |
+| gas volatility over 30 days | −0.056 | −0.039 | −0.097 |
+| CO2 price change over 30 days | 0.080 | 0.054 | 0.086 |
+
+Temperature works through the season (its anomaly carries nothing), the rest is weak but plausible: wet quarters lower prices beyond what PyPSA's hydro dispatch gives, rising gas lifts them. The candidates became features, with the daily data built by the new `ppf exogenous`:
+
+- `temperature`, `hdd`: population-weighted daily mean temperature per bus region from the ERA5 cutout of the backcast.
+- `runoff_90d`: ERA5 runoff per country over the past 90 days against its 1991–2020 normal (PyPSA-Eur's runoff series, extended to 2024 with the cutout), capped at 5 for countries with hardly any runoff (NL, DK, LU).
+- `reservoir_anomaly`: weekly hydro reservoir filling of the country from ENTSO-E (16.1.D, 20 countries), as share of its 2015–2018 maximum minus the 2015–2018 median of the same week, lagged one week as known at the auction.
+- `gas_change_30d`, `gas_vol_30d`: from the gas cost of the table.
+
+Each was added alone to the 13 default features, 2022 left out. The baseline is the default rerun on the same tables (E116/E117 and seeds E102–E105): E90/E91 ran on an earlier 2024 table without AL00, ME00, MK00 and XK00, so their raw MAE differs (22.94 instead of 24.07) and they are not comparable.
+
+| features | year mean / worst | forward mean / worst |
+|---|---|---|
+| default, seeds 0–2 (E116, E102, E104 / E117, E103, E105) | 0.144 / 0.060 | 0.087 / −0.074 |
+| + gas change (E92/E93) | 0.139 / 0.045 | 0.089 / −0.013 |
+| + gas volatility (E94/E95) | 0.136 / 0.067 | 0.085 / −0.042 |
+| + temperature (E96/E97) | 0.160 / 0.042 | 0.095 / −0.066 |
+| + runoff (E98/E99) | 0.150 / 0.073 | 0.083 / −0.027 |
+| + reservoir, 2015–2024 normal, seeds 0–2 (E100, E106, E108 / E101, E107, E109) | 0.175 / 0.069 | 0.091 / −0.025 |
+| **+ reservoir, 2015–2018 normal (E112/E113)** | **0.176 / 0.073** | **0.092 / −0.029** |
+| + reservoir, runoff, temperature (E114/E115) | 0.172 / 0.063 | 0.106 / −0.017 |
+
+Skill per held-out year, year split:
+
+| | 2019 | 2020 | 2021 | 2023 | 2024 |
+|---|---|---|---|---|---|
+| default (E116) | 0.178 | 0.267 | 0.088 | 0.060 | 0.130 |
+| + reservoir (E112) | 0.272 | 0.281 | 0.110 | 0.073 | 0.144 |
+
+- **Reservoir filling is the one clear gain**: +0.031 on the year mean, better in every held-out year, the same over three seeds (spread ±0.002 with the 2015–2024 normal), and it more than halves the worst forward year (2021, −0.074 → −0.029). It is the water value PyPSA misses: with perfect foresight its reservoirs release at near-zero cost, while the market prices hydro by how full the reservoirs are. 2019 gains most, 0.178 → 0.272.
+- The reservoir normal of E100–E111 included the held-out year; the 2015–2018 normal, before any backcast year, gives the same skill, so the gain is not a leak.
+- Gas momentum and volatility do not carry over: the default features already see the gas cost through the model price.
+- Temperature lifts the mean but lowers the worst year, as a season proxy it lets trees memorise years. Runoff is about the noise on its own and adds nothing on top of reservoirs.
+- All three weather variables together are the best forward mean (0.106) but below reservoirs alone on the year split. Reservoirs alone is the simpler choice.
+- For a scenario run the observed filling is unknown; `reservoir_anomaly` = 0 (a normal year) is the neutral input. The model's own hydro state of charge would be the scenario-proof version (needs a new table column).
+
+### The day-ahead forecasts the market cleared on
+
+`ppf forecasts` downloads the ENTSO-E day-ahead load forecast (6.1.B) and wind and solar forecast (14.1.D) per area, hourly, 2019–2024 (16 area-years unpublished). `load_forecast_error` = forecast / model load − 1 and `vres_forecast_error` = (forecast − available model wind and solar) / model load, per zone. `experiments/forecast_check.py` finds no correlation with the residual of the report: Spearman −0.002 / −0.007 hourly, 0.008 / −0.011 within zone-year, −0.005 / −0.009 per zone and day.
+
+In training they still help, on top of reservoirs:
+
+| features | year mean / worst | forward mean / worst |
+|---|---|---|
+| default + reservoir (E112/E113) | 0.176 / 0.073 | 0.092 / −0.029 |
+| + both forecast errors, seeds 0–2 (E118, E120, E122 / E119, E121, E123) | 0.184 / 0.091 | 0.102 / −0.020 |
+| + load forecast error (E124/E125) | 0.182 / 0.089 | 0.096 / −0.018 |
+| + wind and solar forecast error (E126/E127) | 0.182 / 0.090 | 0.093 / −0.034 |
+| **placebo**: each bus keeps its median forecast error of all years (E128/E129) | 0.184 / 0.090 | 0.102 / −0.028 |
+
+- **The gain is the zone, not the forecast.** The placebo, a constant per bus, scores as well as the hourly forecasts in every held-out year. The trees use how far the model's load and wind and solar sit from ENTSO-E's in each zone (ITCA load +53 %, SE02 wind and solar +49 % of load), a numeric zone descriptor, which unlike the `bus` category (E46/E47) can rank zones.
+- The hourly forecast errors carry nothing beyond that, so they are not worth a download that only exists for past years. The zone offsets point at upstream calibration (zone extents and capacities in the backcast) and are better fixed there.
+
+### Round 15 conclusions
+
+- Use `reservoir_anomaly` (+0.032 year mean, every held-out year better, worst forward year −0.074 → −0.029). It is not a default yet because it needs `ppf exogenous` data, which the report and dashboard would need too.
+- Of the literature's usual price drivers, the weather (temperature, runoff), the fuel momentum and the day-ahead forecasts add nothing once reservoirs are in, or only through zone identity.
+- Still far from 0.5: the remaining error is mostly the level per zone and year that no outside variable here explains.
+
+## Round 16: every year on one identical upstream config (2026-11-03)
+
+The backcast reran 2019–2025 on one model config, keeping only per-year facts (branch `exp/backcast-uniform-config` of pypsa-eur-backcast), in two variants: `uniform`, the plain base model, and `recipe`, the 2022 recipe on every year (monthly availability caps, daily gas, PL coal price). `experiments/extract_set.sh` now takes a variant and extracted them into `data/tables-uniform` and `data/tables-recipe`; `data/tables-master` is the master set plus its 2025 run. Raw median MAE:
+
+| set | 2019 | 2020 | 2021 | 2022 | 2023 | 2024 | 2025 |
+|---|---|---|---|---|---|---|---|
+| master | 7.89 | 9.36 | 25.68 | 57.57 | 20.96 | 24.07 | 25.01 |
+| uniform | 7.89 | 9.36 | 25.69 | 92.30 | 21.31 | 22.84 | 24.94 |
+| recipe | 9.98 | 11.16 | 24.91 | 57.76 | 25.27 | 25.63 | 24.11 |
+
+Default `lgbm`, skill against the raw MAE of the same set (E130–E141), and with reservoir filling (E142–E147):
+
+| set | year mean / worst | forward mean / worst |
+|---|---|---|
+| master | 0.122 / −0.068 | 0.064 / −0.132 |
+| uniform | 0.140 / 0.056 | 0.088 / −0.077 |
+| recipe | 0.187 / −0.009 | 0.160 / 0.009 |
+| recipe + reservoir | 0.203 / −0.005 | 0.168 / −0.021 |
+| master, no 2022 | 0.146 / 0.079 | 0.097 / −0.077 |
+| master, no 2022, + reservoir | 0.173 / 0.080 | 0.104 / −0.029 |
+| uniform, no 2022 | 0.139 / 0.081 | 0.086 / −0.077 |
+| recipe, no 2022 | 0.218 / 0.125 | 0.186 / 0.131 |
+| **recipe, no 2022, + reservoir** | **0.233 / 0.127** | **0.202 / 0.127** |
+
+Skill flatters the recipe, whose raw prices are too high in normal years: part of its skill is the correction taking that bias out again. The fair comparison is the corrected MAE itself. `ppf evaluate` per set (`results/round16/`), median over the buses all three sets score (master also scores PL00 in 2020 and AL00, ME00, MK00, XK00 in 2023–2024), mean over years:
+
+| | year, all | forward, all | year, no 2022 | forward, no 2022 |
+|---|---|---|---|---|
+| master raw | 24.20 | 26.92 | 18.64 | 20.79 |
+| master + correction | 22.72 | 27.04 | 16.40 | 19.57 |
+| uniform + correction | 25.23 | 29.54 | 16.41 | 19.58 |
+| recipe + correction | **22.21** | **24.84** | **16.31** | **18.46** |
+
+- **The recipe set gives the best corrected prices** in every column. Its gain is in the crisis years: 2021 forward 21.32 against 27.66 on master, 2022 57.24 against 65.19. In normal years master + correction stays 0.3–0.8 better (2019, 2020, 2023).
+- **With the recipe the correction carries over**: every held-out year improves in both splits, the forward worst is +0.009 with 2022 and +0.131 without, where master never got above −0.077. A correction trained on years that err alike is the consistency round 14 asked for.
+- On master, the correction learned on earlier years makes the forward split worse overall (27.04 against raw 26.92), because nothing before 2021 teaches it a gas crisis.
+- `uniform` is master with a broken 2022 (gas under-dispatch, 92.30): no gain, as the backcast's own comparison found.
+- Reservoir filling adds +0.015 to +0.027 on the year mean of every set. With 2022 on the forward split it costs 2022 (57.24 → 58.99, trained on 2019–2021 only).
+- Best so far: recipe tables with reservoir filling, 0.233 / 0.202 mean skill without 2022. Against master's raw MAE the corrected recipe prices (default features) are 8 % (year) and 8 % (forward) better with 2022, 12.5 % and 11 % without.
+
+### Adopted (2026-11-03)
+
+- `data/tables` is now the recipe set (`backcast-<year>-recipe`, 2019–2025). The default features stay the 13 network features of round 5: the correction must run on any solved network, so observed inputs such as `reservoir_anomaly` stay optional (`--variables`, round 17).
+- 2022 is back in the report. Training on 2022 hardly moves the other recipe years (year split: 2021 20.98 with against 21.80 without, 2019 6.68 against 6.49, the rest within 0.2), so the round 13 reason to leave it out, one fixed year among unfixed ones, is gone. The correction does nothing for 2022 itself (57.76 raw, 58.29 corrected on the year split).
+- The ablation of the report only adds features whose variables the table holds (`has_variables`), so it covers temperature and runoff but not the forecast errors.
+
+## Round 17: the model's own hydro reservoirs instead of the observed filling (2026-11-03)
+
+`reservoir_anomaly` is observed data, so a scenario run can only take 0. Could the solved network give the same signal? `experiments/model_reservoirs.py` builds, per zone and day from the hydro storage units of the recipe networks: the state of charge as share of the energy capacity (`reservoir_share_model`), that share minus the median of the same week over 2019–2025 (`reservoir_anomaly_model`), and the inflow of the past 90 days over its median of the same day (`inflow_90d_model`, years chained, the empty 29 February of the 8760-hour networks dropped). Default round 5 features plus each, recipe tables with 2022 (E148–E155), against none (E138/E139) and the observed filling (E144/E145):
+
+| added | year mean / worst | forward mean / worst |
+|---|---|---|
+| none | 0.187 / −0.009 | 0.160 / 0.009 |
+| observed `reservoir_anomaly` | **0.203** / −0.005 | **0.168** / −0.021 |
+| `reservoir_share_model` | 0.186 / −0.006 | 0.153 / −0.001 |
+| `reservoir_anomaly_model` | 0.189 / 0.011 | 0.154 / 0.002 |
+| `inflow_90d_model` | 0.180 / 0.006 | 0.149 / −0.013 |
+| `reservoir_anomaly_model` + `inflow_90d_model` | 0.184 / 0.012 | 0.146 / −0.009 |
+
+- **None of the model's variables helps**: within the noise on the year split, 0.006–0.014 worse forward. So the defaults stay network-only and the observed filling stays an option.
+- The model's filling does not follow the real one: r = 0.10 between the model and the observed weekly anomaly. In Italy, Norway and Sweden the model anomaly is about 0 every year.
+- Two reasons in the backcast's hydro: some reservoirs are far too large to bind (ITCA and ITS1 `max_hours` ≈ 17,800, NOM1 39.5 TWh for 16.7 TWh inflow, all stay at 43–55 % the whole year), and every year is solved with a cyclic state of charge and free start level, so no year can start with reservoirs low after a dry one, which is what the market priced in 2022. Others (AT, CH, FR, PT, NOS2, ITN1) run from empty to full within the year.
+- The model's inflow tracks the cutout runoff (r = 0.58) and, like `runoff_90d` in round 15, adds nothing.
+
+## Round 18: temperature, gas-scaled corrections and bands per price level on the recipe tables (2026-11-09)
+
+Recipe tables with 2022 (`data/tables`, the report), against the network-only defaults E138/E139. Skill per held-out year, mean / worst:
+
+| | year | forward |
+|---|---|---|
+| network only (E138/E139) | 0.187 / −0.009 | 0.160 / 0.009 |
+| + `temperature` (E156/E157) | **0.197** / −0.001 | **0.170** / −0.034 |
+| `lgbm_gas` (E158/E159) | 0.143 / −0.040 | 0.032 / −0.478 |
+| `lgbm_gas_clip` (E160/E161) | 0.146 / −0.020 | 0.114 / −0.017 |
+
+Seed noise, three seeds each (E165–E172 with `random_state` 1 and 2):
+
+| | year mean | year worst | forward mean | forward worst |
+|---|---|---|---|---|
+| network only | 0.184–0.187 | −0.009 to −0.007 | 0.154–0.162 | −0.002 to 0.009 |
+| + `temperature` | 0.197–0.199 | −0.001 to 0.004 | 0.160–0.170 | −0.048 to −0.034 |
+
+- **Temperature helps on the year split beyond the seeds**: every temperature seed beats every network-only seed (+0.012 on the seed average), and six of seven years improve, most 2024 (+0.034) and 2020 (+0.016); 2019 loses 0.009.
+- **Forward it lifts the mean by +0.006 on the seed average, inside the seed range, and always costs 2022** (skill 0.004 → −0.041, the model trained on 2019–2021 only). The other forward years gain 0.006–0.031. Unlike round 15 on the master tables, temperature no longer lowers the worst year on the year split; it still does on the forward split, through 2022.
+- `temperature` is the population-weighted daily mean per bus region from the backcast's own ERA5 cutout, so any run with a cutout has it.
+- **The gas-scaled corrections lose everywhere.** Scaling the residual by the gas price extrapolates when gas leaves the training range: forward 2021 goes from 0.144 to −0.478 (21.32 → 36.82 MAE). Clipping the scale limits the damage but stays below the plain correction in every year.
+- **Bands per price level are worse than one relative calibration.** Pinball skill against the point correction, mean / worst: year 0.154 / −0.078 (level, E162) against 0.175 / 0.009 (the report's bands); forward 0.152 / 0.055 (E164) against 0.191 / 0.162 (E163). Levels help only 2022 a little (80 % coverage 0.674 → 0.699, pinball 24.15 → 21.57) and cost the quiet years, where the high levels have few rows (2019 coverage 0.943, too wide).
+- Nothing adopted yet: temperature as a default would need the cutout variables for every table (`--variables`); left for decision.
+
+## Round 19: correction share, tree size, heating degree days and the learning curve on the recipe tables (2026-11-09)
+
+**Correction share.** `experiments/shrink_sweep.py` rescales the stored held-out corrections of the band runs E162/E163, so no retraining; at 0.7 it reproduces E138 exactly. Mean skill:
+
+| share | 0.5 | 0.6 | 0.7 | 0.8 | 0.9 | 1.0 |
+|---|---|---|---|---|---|---|
+| year | 0.165 | 0.177 | **0.187** | 0.186 | 0.179 | 0.169 |
+| forward (2021–2025) | 0.109 | 0.115 | **0.126** | 0.125 | 0.126 | 0.126 |
+
+`SHRINK = 0.7` stays.
+
+**Tree size and heating degree days**, mean / worst, against E138/E139 and their seeds (E165–E168):
+
+| | year | forward |
+|---|---|---|
+| default trees, 3 seeds | 0.184–0.187 / −0.009 to −0.007 | 0.154–0.162 / −0.002 to 0.009 |
+| medium trees (E173/E174) | 0.177 / −0.012 | 0.150 / 0.004 |
+| larger trees, 3 seeds (E175/E176, E179–E182) | **0.190–0.197** / 0.002 to 0.009 | 0.161–0.168 / 0.001 to 0.013 |
+| + `hdd` (E177/E178) | 0.199 / 0.011 | 0.169 / −0.028 |
+
+- **Larger trees** (127 leaves, ≥ 25 rows per leaf, 1200 trees) now beat the default on the year split beyond the seeds (+0.008 on the seed average, every seed above every default seed, worst year above 0), and +0.005 forward, inside the range. On the master tables they lost (round 12); seven recipe years with 2022 hold more detail worth fitting. Training takes about 2.5 times as long. Not adopted yet.
+- **`hdd` is temperature again**: the same years gain and forward 2022 loses the same way (0.009 → −0.028). The loss is not the season proxy of the full temperature range.
+
+**Learning curve** (`experiments/learning_curve.py --out experiments/results_learning_curve_recipe.csv`, 2022 left out): mean skill over every training subset of the other years.
+
+| training years | 1 | 2 | 3 | 4 | 5 |
+|---|---|---|---|---|---|
+| recipe tables, mean | 0.100 | 0.163 | 0.184 | 0.206 | 0.218 |
+| recipe tables, worst year | 0.035 | 0.088 | 0.118 | 0.124 | 0.125 |
+| master tables (earlier run), mean | 0.019 | 0.096 | 0.127 | 0.145 | – |
+
+- Skill still grows with each year, but by less: +0.063, +0.021, +0.022, +0.012. On a log trend, four more backcast years would add about +0.04, to some 0.26: more years help, they will not reach 0.5.
+- 2019 and 2020 keep climbing (0.349, 0.306 from five years); 2021, 2023 and 2025 are flat after two or three years, their errors are not in other years.
+- The recipe tables are better at every training size, by 0.06–0.08.
+
+## Round 20: is temperature weather or season? (2026-11-10)
+
+A forecast run would need temperature forecasts, useful for one to two weeks. Two variants tell how much of the round 18 gain needs the actual weather:
+
+- `temperature` replaced by its normal for the day of the year per bus (`experiments/temperature_normal.py`: mean over the other years only, smoothed over 31 days; r = 0.93 with the actual temperature), E183/E184.
+- `winter`, the same smooth calendar season for every bus (cos of the day of the year, 1 in mid-January), no weather and no zone, E185/E186.
+
+| | year mean / worst | forward mean / worst |
+|---|---|---|
+| network only, 3 seeds | 0.184–0.187 / −0.009 to −0.007 | 0.154–0.162 / −0.002 to 0.009 |
+| actual `temperature`, 3 seeds | 0.197–0.199 / −0.001 to 0.004 | 0.160–0.170 / −0.048 to −0.034 |
+| normal temperature | 0.193 / −0.008 | 0.165 / −0.053 |
+| `winter` | 0.187 / −0.023 | 0.154 / −0.064 |
+
+- **The normal keeps about 60 % of the year-split gain and all of the forward one.** The actual weather adds the rest, mostly in 2019 (0.314 against 0.279) and a little in 2022; the other years are within 0.01. So a temperature forecast earns its value over its first one to two weeks, beyond that the normal gives most of it.
+- **The calendar season alone adds nothing** and costs 2022 in both splits. What the normal carries is the season per zone climate: a cold winter in Finland is not a mild one in Spain.
+- Every temperature variant costs forward 2022 (0.009 without, −0.034 to −0.064 with): learned on 2019–2021, the winter price pattern does not hold in the gas crisis.

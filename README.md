@@ -78,7 +78,36 @@ All features come from the network alone, so the model also works for future run
 
 Applying 70 % of the correction hedges against corrections that do not carry over to an unseen year: it beats raw PyPSA in every held-out year, while the whole correction is worse in 2023 ([experiments/NOTES.md](experiments/NOTES.md)).
 
+### Price bands
+
+`Banded` (`models.py`) adds a 10 to 90 % band, and every 5 % quantile, around the `lgbm` price. The band comes from the errors of `lgbm` in years it did not see, relative to its predicted price, per zone. It beats the point price on pinball loss in every held-out year, and its probability of a price above 150 EUR/MWh beats the point price ([experiments/NOTES.md](experiments/NOTES.md), rounds 7, 10 and 13). It misses upwards in regime changes such as 2022.
+
 To add a feature, add an entry to `FEATURES` in `dataset.py`, plus a column in `network.py` if it needs new data from the network.
+
+### Variables from outside the network
+
+Some features need daily or hourly data the network does not hold. Build them once, then pass them with `--variables` to `evaluate`, `train`, `predict` and `report`. The default features use the network alone, so the correction runs on any solved network, scenarios included; these variables are optional:
+
+```bash
+# daily temperature and runoff from the backcast's ERA5 cutouts, hydro reservoir filling from ENTSO-E
+pixi run ppf exogenous /path/to/pypsa-eur-backcast --year 2019 --year 2024 -o data/exogenous.parquet
+# hourly day-ahead load and wind and solar forecasts from ENTSO-E
+pixi run ppf forecasts --year 2019 --year 2024 -o data/forecasts.parquet
+
+pixi run ppf evaluate data/tables/*.parquet -o results/eval --variables data/exogenous.parquet \
+    -f model_price ... -f reservoir_anomaly
+```
+
+| feature | definition | source |
+|---|---|---|
+| `reservoir_anomaly` | hydro reservoir filling of the country as share of its 2015–2018 maximum, minus the 2015–2018 median of the same week, lagged a week | ENTSO-E 16.1.D |
+| `runoff_90d` | ERA5 runoff of the country over the past 90 days / its 1991–2020 normal, at most 5 | backcast `data/country_runoff`, cutouts |
+| `temperature`, `hdd` | population-weighted daily mean temperature of the bus region, heating degrees below 15.5 °C | backcast cutout |
+| `gas_change_30d`, `gas_vol_30d` | change and volatility of the daily gas cost over 30 days | table |
+| `load_forecast_error` | day-ahead load forecast of the zone / model load − 1 | ENTSO-E 6.1.B |
+| `vres_forecast_error` | (day-ahead wind and solar forecast − available model wind and solar) / model load | ENTSO-E 14.1.D |
+
+`reservoir_anomaly` is the one that helps on held-out years (+0.016 mean skill on the year split), but it is observed data a scenario run does not have, and the model's own reservoir filling does not replace it, so it is not a default; the forecast errors help only as a constant per zone (rounds 15 to 17 in [experiments/NOTES.md](experiments/NOTES.md)). Reservoir filling and the forecasts are only known for past years: for a scenario run, take `reservoir_anomaly` = 0, a normal year.
 
 ## Evaluation splits
 
@@ -95,20 +124,28 @@ Experiments and their results are logged in [experiments/](experiments/).
 - scores per model and year, per zone and per month;
 - feature impact: the default LightGBM refitted without each of its features and with each other feature, plus two seed repeats that give the noise level;
 - split gain per feature;
-- hourly market, PyPSA and corrected prices;
+- hourly market, PyPSA and corrected prices, with the 10 and 90 % quantiles of the price band, and the band's calibration per year;
 - `history.csv`, with one row per report.
 
 It uses the year split once there are several years, otherwise the month split.
 
 ```bash
-pixi run report                    # ppf report data/tables/*.parquet, ~45 min per year of tables
+pixi run report                    # ppf report data/tables/*.parquet, about 2 h
 pixi run report --no-ablation      # quick check without the feature impact
+pixi run report --no-bands         # without the price bands, which refit lgbm per pair of years
 pixi run -e dashboard dashboard    # streamlit run dashboard/app.py
 ```
 
 The dashboard (`dashboard/app.py`) shows `report/` and the experiment log.
 Deploy it on Streamlit Community Cloud from the branch `master` with main file `dashboard/app.py`. It installs only `dashboard/requirements.txt`.
 It then always shows the report committed on master. Rerun `pixi run report` and commit `report/` whenever the code, defaults or tables change.
+The tables are the backcast runs of 2019 to 2025 on one identical configuration, the 2022 recipe of pypsa-eur-backcast (monthly availability and the other issue #26 fixes for every year). With every year on the same fixes, 2022 is back in training and scoring ([experiments/NOTES.md](experiments/NOTES.md), round 16).
+
+To refresh the tables from a backcast checkout, with the observed prices the backcast scores itself against:
+
+```bash
+experiments/extract_set.sh ../pypsa-eur-backcast data/tables "$(seq -s ' ' 2019 2025)" recipe
+```
 A test fails if `report/` was written with other default features or LightGBM parameters than the code has.
 Set `PPF_REPORT` to show another report directory.
 

@@ -4,3 +4,5 @@ created,commit,split,runs,mae_pypsa,r_pypsa,mae_top5_pypsa,mae_low5_pypsa,mae_lg
 2026-10-29T12:18:11+00:00,f1a49dc,year,backcast-2019 backcast-2020 backcast-2021 backcast-2022 backcast-2023 backcast-2024,20.939,0.729,187.231,39.547,19.405,0.778,181.888,26.616
 2026-10-29T16:41:27+00:00,775e00a,year,backcast-2019 backcast-2020 backcast-2021 backcast-2022 backcast-2023 backcast-2024,20.939,0.729,187.231,39.547,18.926,0.779,174.142,26.941
 2026-10-30T12:30:41+00:00,79695db,year,backcast-2019 backcast-2020 backcast-2021 backcast-2022 backcast-2023 backcast-2024,20.939,0.729,187.231,39.547,18.926,0.779,174.142,26.941
+2026-11-02T13:30:48+00:00,acf8ba3,year,backcast-2019 backcast-2020 backcast-2021 backcast-2023 backcast-2024,19.458,0.752,68.061,33.445,16.919,0.793,69.17,22.77
+2026-11-03T21:15:47+00:00,32ee81c,year,backcast-2019-recipe backcast-2020-recipe backcast-2021-recipe backcast-2022-recipe backcast-2023-recipe backcast-2024-recipe backcast-2025-recipe,23.965,0.758,103.815,40.07,19.296,0.802,107.408,28.114

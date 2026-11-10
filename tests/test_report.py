@@ -60,6 +60,18 @@ def test_report_without_bands_removes_old_band_scores(table, tmp_path, small_lgb
     assert "lgbm_q10" not in pd.read_parquet(tmp_path / "prices.parquet")
 
 
+def test_report_leaves_out_excluded_years(table, tmp_path, small_lgbm):
+    features = ["model_price", "margin_with_imports"]
+    report.write_report(
+        table, tmp_path, features=features, with_ablation=False, exclude_years=[2021]
+    )
+    meta = json.loads((tmp_path / "meta.json").read_text())
+    assert meta["years"] == [2019, 2023]
+    assert meta["excluded_years"] == [2021]
+    prices = pd.read_parquet(tmp_path / "prices.parquet")
+    assert not (prices.snapshot.dt.year == 2021).any()
+
+
 def test_default_split_falls_back_to_month_and_week(table):
     one = table[table.year == 2023]
     assert report.default_split(table) == "year"

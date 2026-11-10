@@ -4,6 +4,19 @@ Written 2026-10-29 for whoever (human or agent) picks this up next. The user's h
 reaction after round 5: *"performance still does not seem that good."* They're right
 to push on this — read the "Honest assessment" section before doing anything else.
 
+## Update after rounds 15–16 (2026-11-03)
+
+- **Tables:** `data/tables` now holds every year 2019–2025 on one identical backcast
+  configuration, the 2022 recipe (`backcast-<year>-recipe`). With the same fixes in
+  every year, 2022 is back in the report and the correction helps every held-out year
+  (round 16). This supersedes the round 13 note below.
+- **Default features stay network-only** (user decision): the correction must run on
+  any solved network, plus at most easily measured inputs such as temperature.
+  `reservoir_anomaly` (observed ENTSO-E filling) helps (+0.016 year skill) but is
+  optional (`--variables`); the model's own reservoir filling does not replace it
+  (round 17). Temperature, runoff and gas momentum add nothing; the day-ahead forecast
+  errors only act as zone identity.
+
 ## Update after rounds 6–12 (2026-10-30)
 
 Tier 1 and most of tier 2 below are done; details in `experiments/NOTES.md`.
@@ -18,10 +31,15 @@ Tier 1 and most of tier 2 below are done; details in `experiments/NOTES.md`.
 - **Ceiling:** perfect knowledge of each zone's monthly price level would only reach
   skill 0.36, daily level 0.54. The user's goal is a 50 % MAE cut, which needs the
   backcast itself to improve.
-- **Upstream is the lever:** the issue #26 fixes for 2022 (pypsa-eur-backcast
-  `feat/backcast-2022`) cut raw 2022 MAE from 92 to 59, but mixing one fixed year with
-  unfixed ones hurts the correction (round 9). Retrain once every year has the same
-  fixes; the round 9 experiments (`tables=` in `experiments/run.py`) show how.
+- **Upstream is the lever:** the issue #26 fixes for 2022 (pypsa-eur-backcast) cut raw
+  2022 MAE from 92 to 58, but mixing one fixed year with unfixed ones hurts the
+  correction (rounds 9 and 13).
+- **Round 13 (2026-11-02):** `data/tables` now holds the backcast runs of 2026-11-02
+  (same code for all years, issue #26 switches on for 2022 only). The report leaves
+  2022 out (`--exclude-year 2022` in the `report` task) until the switches cover the
+  other years. Next: when 2021 (Q4 gas 40 vs 130 TWh) and 2024 are rerun with
+  `monthly_availability_carriers`, extract with `experiments/extract_set.sh
+  <backcast checkout> data/tables`, rerun E86–E91 and the report, and put 2022 back.
 
 ## 30-second orientation
 
@@ -214,5 +232,5 @@ Rounds 1–5, summarized (MAE / mean skill, year split unless noted):
 - Commit as you go, with a short rationale in the message (see recent history for
   style) and the `Co-Authored-By:` line your own session's attribution reminder gives
   you — don't hardcode a name from this file, it changes between sessions/models.
-- Push to `origin master` directly; there's no PR workflow on this repo (unlike the
-  sibling `pypsa-eur-backcast` repo, which does use PRs).
+- Never push to master: put changes on a branch and open a PR, which the user reviews
+  and merges (the user's rule since 2026-11-02, as in the sibling `pypsa-eur-backcast`).

@@ -8,7 +8,7 @@ seeds give the noise level below which a change in MAE means nothing. The
 report is a directory of small files, committed to git so the dashboard on
 the branch ``master`` always shows the latest results:
 
-- ``meta.json``: commit, runs, split, features and LightGBM parameters
+- ``meta.json``: commit, runs, split, features, LightGBM parameters and years left out
 - ``scores.csv``: scores per model, see :func:`pypsa_price_forecaster.evaluate.scores`
 - ``scores_by_year.csv``: the same per model and year
 - ``bus_metrics.csv``: metrics per model, year and bus
@@ -34,7 +34,12 @@ import pandas as pd
 from lightgbm import LGBMRegressor
 
 from pypsa_price_forecaster import __version__
-from pypsa_price_forecaster.dataset import DEFAULT_FEATURES, FEATURES, TARGET
+from pypsa_price_forecaster.dataset import (
+    DEFAULT_FEATURES,
+    FEATURES,
+    TARGET,
+    has_variables,
+)
 from pypsa_price_forecaster.evaluate import (
     band_scores,
     bus_metrics,
@@ -123,9 +128,13 @@ def monthly(table: pd.DataFrame, predictions: pd.DataFrame) -> pd.DataFrame:
 def ablation(
     table: pd.DataFrame, split: str, folds: int, features: list[str]
 ) -> pd.DataFrame:
-    """Return the scores of ``lgbm`` without each of `features` and with each other feature."""
+    """Return the scores of ``lgbm`` without each of `features` and with each other feature `table` has the variables of."""
     variants = [("without", f, [g for g in features if g != f]) for f in features]
-    variants += [("with", f, [*features, f]) for f in FEATURES if f not in features]
+    variants += [
+        ("with", f, [*features, f])
+        for f in FEATURES
+        if f not in features and has_variables(table, f)
+    ]
     result = {}
     for change, feature, used in variants:
         logger.info(f"Ablation: lgbm {change} {feature}.")
@@ -180,6 +189,7 @@ def write_report(
     features: list[str] | None = None,
     with_ablation: bool = True,
     with_bands: bool = True,
+    exclude_years: list[int] | None = None,
 ) -> pd.DataFrame:
     """
     Write the report of the default models on `table` to the directory `out` and return the scores.
@@ -202,10 +212,14 @@ def write_report(
     with_bands : bool
         Whether to add the price bands, which refit ``lgbm`` once per pair of
         held-out years. Only with the year split and three or more years.
+    exclude_years : list[int] | None
+        Years left out of training and scoring, e.g. a year whose backcast was
+        fixed upstream while the others were not, recorded in ``meta.json``.
     """
     out = Path(out)
     out.mkdir(parents=True, exist_ok=True)
-    table = labelled(table).reset_index(drop=True)
+    exclude_years = sorted(exclude_years or [])
+    table = labelled(table[~table.year.isin(exclude_years)]).reset_index(drop=True)
     split = split or default_split(table)
     features = list(DEFAULT_FEATURES if features is None else features)
 
@@ -259,6 +273,7 @@ def write_report(
         "lgbm_params": lgbm_params(),
         "seed_mae": [round(float(m), 4) for m in seed_mae],
         "bands": bands is not None,
+        "excluded_years": exclude_years,
     }
     (out / "meta.json").write_text(json.dumps(meta, indent=2) + "\n")
 

@@ -655,3 +655,21 @@ Seed noise, three seeds each (E165–E172 with `random_state` 1 and 2):
 - Skill still grows with each year, but by less: +0.063, +0.021, +0.022, +0.012. On a log trend, four more backcast years would add about +0.04, to some 0.26: more years help, they will not reach 0.5.
 - 2019 and 2020 keep climbing (0.349, 0.306 from five years); 2021, 2023 and 2025 are flat after two or three years, their errors are not in other years.
 - The recipe tables are better at every training size, by 0.06–0.08.
+
+## Round 20: is temperature weather or season? (2026-11-10)
+
+A forecast run would need temperature forecasts, useful for one to two weeks. Two variants tell how much of the round 18 gain needs the actual weather:
+
+- `temperature` replaced by its normal for the day of the year per bus (`experiments/temperature_normal.py`: mean over the other years only, smoothed over 31 days; r = 0.93 with the actual temperature), E183/E184.
+- `winter`, the same smooth calendar season for every bus (cos of the day of the year, 1 in mid-January), no weather and no zone, E185/E186.
+
+| | year mean / worst | forward mean / worst |
+|---|---|---|
+| network only, 3 seeds | 0.184–0.187 / −0.009 to −0.007 | 0.154–0.162 / −0.002 to 0.009 |
+| actual `temperature`, 3 seeds | 0.197–0.199 / −0.001 to 0.004 | 0.160–0.170 / −0.048 to −0.034 |
+| normal temperature | 0.193 / −0.008 | 0.165 / −0.053 |
+| `winter` | 0.187 / −0.023 | 0.154 / −0.064 |
+
+- **The normal keeps about 60 % of the year-split gain and all of the forward one.** The actual weather adds the rest, mostly in 2019 (0.314 against 0.279) and a little in 2022; the other years are within 0.01. So a temperature forecast earns its value over its first one to two weeks, beyond that the normal gives most of it.
+- **The calendar season alone adds nothing** and costs 2022 in both splits. What the normal carries is the season per zone climate: a cold winter in Finland is not a mild one in Spain.
+- Every temperature variant costs forward 2022 (0.009 without, −0.034 to −0.064 with): learned on 2019–2021, the winter price pattern does not hold in the gas crisis.

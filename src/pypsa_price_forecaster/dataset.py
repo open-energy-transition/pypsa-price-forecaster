@@ -191,6 +191,8 @@ FEATURES: dict[str, Callable[[pd.DataFrame], pd.Series]] = {
     "dayofweek_local": lambda t: local_time(t).dt.day_of_week,
     "holiday": holiday,
     "month": lambda t: t.snapshot.dt.month,
+    # smooth season, 1 in mid-January, -1 in mid-July, the same for every bus (round 20)
+    "winter": lambda t: np.cos(2 * np.pi * (t.snapshot.dt.dayofyear - 15) / 365.25),
     "gas_change_30d": lambda t: daily_gas(t, lambda s: s / s.shift(30) - 1),
     "gas_vol_30d": lambda t: daily_gas(t, lambda s: np.log(s).diff().rolling(30).std()),
     "temperature": exogenous("temperature"),

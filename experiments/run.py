@@ -676,6 +676,23 @@ for j, seed in enumerate([1, 2]):
             params=LARGER | {"random_state": seed},
         )
 
+# Round 20: temperature replaced by its normal for the day of the year (leave one
+# year out), against E156/E157: season signal or actual weather?
+TEMPERATURE_NORMAL = "data/temperature_normal.parquet"
+for k, split in enumerate(["year", "forward"]):
+    EXPERIMENTS[f"E{183 + k}_{split}_recipe_temperature_normal"] = dict(
+        split=split,
+        features=DEFAULT_FEATURES + ["temperature"],
+        models=LGBM,
+        exogenous=TEMPERATURE_NORMAL,
+    )
+
+# season without weather or zone: the same smooth winter signal for every bus
+for k, split in enumerate(["year", "forward"]):
+    EXPERIMENTS[f"E{185 + k}_{split}_recipe_winter"] = dict(
+        split=split, features=DEFAULT_FEATURES + ["winter"], models=LGBM
+    )
+
 if __name__ == "__main__":
     table = read_tables(TABLES)
     for name in sys.argv[1:]:

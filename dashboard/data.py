@@ -49,6 +49,17 @@ FEATURE_TEXT = {
     "dayofweek": "Day of week",
     "month": "Month",
     "reservoir_anomaly": "Hydro reservoir filling vs normal for the week",
+    "price_setter": "Technology setting the model price",
+    "imports_congested": "Import links at their limit",
+    "exports_congested": "Export links at their limit",
+    "price_rel_day": "Model price / its daily mean",
+    "price_rank_day": "Rank of the model price within the day",
+    "residual_rank_day": "Rank of load minus renewables within the day",
+    "ramp_3h": "Change of load minus renewables, past 3 h",
+    "ramp_next_3h": "Change of load minus renewables, next 3 h",
+    "price_rel_europe": "Model price / European median",
+    "vres_share_europe": "Wind, solar and run of river / load, Europe",
+    "margin_europe": "Capacity margin, Europe",
 }
 AREA_NAMES = {
     "DE_LU": "Germany",

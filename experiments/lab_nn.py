@@ -19,7 +19,7 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
-from pypsa_price_forecaster.dataset import DEFAULT_FEATURES
+from pypsa_price_forecaster.dataset import BASE_FEATURES
 
 SCALE = 20.0  # EUR/MWh
 CLIP = 8.0  # standardised numeric features are clipped to this
@@ -175,7 +175,7 @@ def fit_predict(
     test,
     seed,
     threads,
-    features: list[str] = DEFAULT_FEATURES,
+    features: list[str] = BASE_FEATURES,
     members: int = 1,
     **options,
 ):

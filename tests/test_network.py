@@ -46,7 +46,11 @@ def test_build_table_reads_network_and_prices(run_files):
     assert set(table.run) == {"solved_2023"}
     assert set(table.year) == {2023}
     assert table.observed_price.notna().all()
-    assert feature_matrix(table, DEFAULT_FEATURES).notna().all().all()
+    features = feature_matrix(table, DEFAULT_FEATURES)
+    ramps = ["ramp_3h", "ramp_next_3h"]
+    assert features.drop(columns=ramps).notna().all().all()
+    # the ramps need the hours 3 h before or after, not there at the ends of the run
+    assert (features[ramps].isna().groupby(table.bus).sum() == 3).all().all()
 
 
 def test_unknown_feature_raises(network):

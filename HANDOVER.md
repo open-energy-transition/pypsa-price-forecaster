@@ -10,9 +10,8 @@ to push on this — read the "Honest assessment" section before doing anything e
   an hour in the day of its bus and in Europe as a whole (`CONTEXT_FEATURES` in
   `dataset.py`, network only) lift the mean skill from 0.187 to 0.229 on the year split
   and from 0.160 to 0.186 forward, in every seed; with the larger trees of round 19,
-  0.233 and 0.194. **Not defaults yet**: the switch changes the report and the
-  dashboard, and `report.py` must build the features on all buses first (it drops the
-  rows without observed price before it builds them).
+  0.233 and 0.194. **Defaults since 2026-11-11**, with the larger trees; the report
+  now fits on every bus, the ones without observed price included.
 - **The model lab** (`experiments/lab.py`, `pixi run -e lab`) scores other libraries,
   networks and ensembles on the same folds and keeps every held-out correction, so
   shares and averages need no refit. Scores in `experiments/results_lab.csv`.

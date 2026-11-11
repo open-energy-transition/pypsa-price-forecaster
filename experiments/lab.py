@@ -29,8 +29,8 @@ from lightgbm import LGBMRegressor
 from pyarrow.parquet import read_schema
 
 from pypsa_price_forecaster.dataset import (
+    BASE_FEATURES,
     CONTEXT_FEATURES,
-    DEFAULT_FEATURES,
     SETTERS,
     TARGET,
     europe_total,
@@ -105,7 +105,7 @@ DAY, EUROPE = CONTEXT[:5], CONTEXT[5:]
 DAY2 = ["price_range_day", "load_rel_day"]
 EUROPE2 = ["price_rank_europe", "curtailment_europe", "firm_utilisation_europe"]
 LONG = ["price_rel_week", "price_rel_year", "residual_rel_year"]
-CACHED = DEFAULT_FEATURES + CONTEXT + DAY2 + EUROPE2 + LONG
+CACHED = BASE_FEATURES + CONTEXT + DAY2 + EUROPE2 + LONG
 
 
 @dataclass
@@ -137,7 +137,7 @@ def load() -> Data:
     if cache.exists() and set(CACHED) <= set(read_schema(cache).names):
         X = pd.read_parquet(cache)
     else:
-        X = feature_matrix(table, DEFAULT_FEATURES + CONTEXT).join(more_context(table))
+        X = feature_matrix(table, BASE_FEATURES + CONTEXT).join(more_context(table))
         OUT.mkdir(parents=True, exist_ok=True)
         X.to_parquet(cache)
     assert len(X) == len(table)
@@ -168,7 +168,7 @@ Candidate = Callable[[Data, np.ndarray, np.ndarray, int], "np.ndarray | dict"]
 
 
 def lgbm(
-    features: list[str] = DEFAULT_FEATURES,
+    features: list[str] = BASE_FEATURES,
     weight: str | None = None,
     relative: bool = False,
     **params,
@@ -251,8 +251,8 @@ def staged(
             random_state=seed,
             n_jobs=THREADS,
         )
-        model.fit(data.X.loc[fit, DEFAULT_FEATURES], data.y[fit])
-        X = data.X.loc[test, DEFAULT_FEATURES]
+        model.fit(data.X.loc[fit, BASE_FEATURES], data.y[fit])
+        X = data.X.loc[test, BASE_FEATURES]
         return {str(n): model.predict(X, num_iteration=n) for n in stages}
 
     return run
@@ -298,7 +298,7 @@ def per_year(candidate: Candidate) -> Candidate:
     return run
 
 
-def level_shape(features: list[str] = DEFAULT_FEATURES, **params) -> Candidate:
+def level_shape(features: list[str] = BASE_FEATURES, **params) -> Candidate:
     """
     The correction split into the mean of the day and the hours around it.
 
@@ -335,7 +335,7 @@ def level_shape(features: list[str] = DEFAULT_FEATURES, **params) -> Candidate:
     return run
 
 
-def catboost(features: list[str] = DEFAULT_FEATURES, **params) -> Candidate:
+def catboost(features: list[str] = BASE_FEATURES, **params) -> Candidate:
     def run(data, train, test, seed):
         from catboost import CatBoostRegressor
 
@@ -360,7 +360,7 @@ def catboost(features: list[str] = DEFAULT_FEATURES, **params) -> Candidate:
     return run
 
 
-def xgboost(features: list[str] = DEFAULT_FEATURES, **params) -> Candidate:
+def xgboost(features: list[str] = BASE_FEATURES, **params) -> Candidate:
     def run(data, train, test, seed):
         from xgboost import XGBRegressor
 
@@ -394,7 +394,7 @@ def neural(kind: str, **options) -> Candidate:
     return run
 
 
-ALL = DEFAULT_FEATURES + CONTEXT
+ALL = BASE_FEATURES + CONTEXT
 CANDIDATES: dict[str, Candidate] = {
     # references: the package defaults and the larger trees of round 19
     "lgbm": lgbm(),
@@ -418,8 +418,8 @@ CANDIDATES: dict[str, Candidate] = {
     "lgbm_level_shape": level_shape(),
     # hours around a row and the other zones
     "lgbm_context": lgbm(ALL),
-    "lgbm_day": lgbm(DEFAULT_FEATURES + DAY),
-    "lgbm_europe": lgbm(DEFAULT_FEATURES + EUROPE),
+    "lgbm_day": lgbm(BASE_FEATURES + DAY),
+    "lgbm_europe": lgbm(BASE_FEATURES + EUROPE),
     "lgbm_larger_context": lgbm(ALL, **LARGER),
     "lgbm_context_day2": lgbm(ALL + DAY2),
     "lgbm_context_europe2": lgbm(ALL + EUROPE2),
@@ -427,7 +427,7 @@ CANDIDATES: dict[str, Candidate] = {
     "lgbm_context_all": lgbm(ALL + DAY2 + EUROPE2 + LONG),
     # the first context set without each feature, and each feature alone
     **{f"lgbm_context_no_{f}": lgbm([g for g in ALL if g != f]) for f in CONTEXT},
-    **{f"lgbm_plus_{f}": lgbm(DEFAULT_FEATURES + [f]) for f in CONTEXT},
+    **{f"lgbm_plus_{f}": lgbm(BASE_FEATURES + [f]) for f in CONTEXT},
     "lgbm_context_jackknife": jackknife(lgbm(ALL)),
     "lgbm_context_weighted": lgbm(ALL, weight="zone_year"),
     "lgbm_context_shift": lgbm(ALL, weight="shift"),

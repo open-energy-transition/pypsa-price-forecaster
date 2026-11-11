@@ -278,8 +278,8 @@ VARIABLES = {
     "load_forecast_error": "load_forecast",
     "vres_forecast_error": "vres_forecast",
 }
-# best set on held-out years from the network alone (experiments/NOTES.md, round 5)
-DEFAULT_FEATURES = [
+# features of a row, the defaults of rounds 5 to 20 (experiments/NOTES.md)
+BASE_FEATURES = [
     "model_price",
     "margin_domestic",
     "margin_with_imports",
@@ -294,8 +294,7 @@ DEFAULT_FEATURES = [
     "imports_congested",
     "exports_congested",
 ]
-
-# the hours around a row and the other zones, from the network alone (round 21)
+# the hours around a row and the other zones (round 21)
 CONTEXT_FEATURES = [
     "price_rel_day",
     "price_rank_day",
@@ -306,6 +305,9 @@ CONTEXT_FEATURES = [
     "vres_share_europe",
     "margin_europe",
 ]
+# best set on held-out years from the network alone (round 21); the context
+# features need the whole run, every hour of the day and every bus
+DEFAULT_FEATURES = BASE_FEATURES + CONTEXT_FEATURES
 
 
 def has_variables(table: pd.DataFrame, feature: str) -> bool:

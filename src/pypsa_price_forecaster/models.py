@@ -341,10 +341,12 @@ def base_model(name: str, features: list[str]) -> Forecaster:
         estimator = LGBMRegressor(
             objective=objective,
             **({"alpha": 0.9} if objective == "quantile" else {}),
-            n_estimators=800,
+            # larger trees than rounds 5 to 20 (63 leaves, 50 rows, 800 trees): with the
+            # context features they gain on held-out years (rounds 19 and 21)
+            n_estimators=1200,
             learning_rate=0.03,
-            num_leaves=63,
-            min_child_samples=50,
+            num_leaves=127,
+            min_child_samples=25,
             subsample=0.8,
             subsample_freq=1,
             colsample_bytree=0.9,

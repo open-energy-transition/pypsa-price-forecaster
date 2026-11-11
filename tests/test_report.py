@@ -1,11 +1,13 @@
 import json
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import pytest
 
 from pypsa_price_forecaster import report
 from pypsa_price_forecaster.dataset import DEFAULT_FEATURES, FEATURES
+from pypsa_price_forecaster.evaluate import cross_validate
 
 REPORT = Path(__file__).parent.parent / "report"
 
@@ -70,6 +72,26 @@ def test_report_leaves_out_excluded_years(table, tmp_path, small_lgbm):
     assert meta["excluded_years"] == [2021]
     prices = pd.read_parquet(tmp_path / "prices.parquet")
     assert not (prices.snapshot.dt.year == 2021).any()
+
+
+def test_report_features_see_the_buses_without_observed_price(
+    table, tmp_path, small_lgbm
+):
+    # spread_europe compares a bus with the median of all buses in the hour
+    features = ["model_price", "spread_europe"]
+    unobserved = table.assign(
+        observed_price=table.observed_price.where(table.bus != "B2")
+    )
+    report.write_report(
+        unobserved, tmp_path, features=features, with_ablation=False, with_bands=False
+    )
+    prices = pd.read_parquet(tmp_path / "prices.parquet")
+    assert set(prices.bus) == {"A", "B1"}
+    expected = cross_validate(unobserved, ["lgbm"], features)
+    rows = unobserved.observed_price.notna()
+    np.testing.assert_allclose(
+        prices.lgbm, expected.lgbm[rows].round(1).astype("float32")
+    )
 
 
 def test_default_split_falls_back_to_month_and_week(table):

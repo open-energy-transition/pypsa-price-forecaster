@@ -17,8 +17,12 @@ from pathlib import Path
 
 import pandas as pd
 
+# the experiments up to round 20 ran on the 13 features of a row, the defaults then,
+# and with the tree size of that time (63 leaves, 50 rows, 800 trees)
 from pypsa_price_forecaster.dataset import (
-    DEFAULT_FEATURES,
+    BASE_FEATURES as DEFAULT_FEATURES,
+)
+from pypsa_price_forecaster.dataset import (
     TARGET,
     attach_exogenous,
     read_tables,

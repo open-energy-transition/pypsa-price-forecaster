@@ -798,6 +798,12 @@ Skill per held-out year, seed 0:
 
 ### Round 21 conclusions
 
-- **Proposed defaults: `DEFAULT_FEATURES + CONTEXT_FEATURES` with the larger trees**, 0.233 / 0.044 on the year split and 0.194 / 0.004 forward against 0.187 / −0.009 and 0.160 / 0.009. Still trees on features of the network alone, about 2.5 to 3 times the training time. Not switched here: it changes the report and the dashboard, and `report.py` has to build the features on all buses first.
+- **New defaults: the 13 features of a row plus `CONTEXT_FEATURES`, with the larger trees**, 0.233 / 0.044 on the year split and 0.194 / 0.004 forward against 0.187 / −0.009 and 0.160 / 0.009. Still trees on features of the network alone, about 2.5 to 3 times the training time.
 - **The network is the next step, not this one.** The average with the TCN is worth another +0.014 / +0.024, at the cost of a second, less explainable model. It gains with every training year, so it gets more attractive as backcast years are added.
 - **Other tree libraries, losses, weightings, regularisation and ensembles of trees are closed**: none beats the reference.
+
+### Adopted (2026-11-11, user decision)
+
+- `DEFAULT_FEATURES` = `BASE_FEATURES` (the 13 features of rounds 5–20) + `CONTEXT_FEATURES`; `lgbm` with 127 leaves, at least 25 rows a leaf and 1200 trees.
+- `report.py` fits every model on all rows of the tables, the buses without observed price included, and scores the rows with observed price. Before, it dropped those buses first, so features comparing buses saw 43 of 50.
+- `run.py` keeps `BASE_FEATURES` as its `DEFAULT_FEATURES`, so the earlier experiments keep their meaning; they ran with the smaller trees.

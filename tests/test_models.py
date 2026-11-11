@@ -4,7 +4,12 @@ import pytest
 from typer.testing import CliRunner
 
 from pypsa_price_forecaster.cli import app
-from pypsa_price_forecaster.dataset import TARGET, attach_exogenous, feature_matrix
+from pypsa_price_forecaster.dataset import (
+    CONTEXT_FEATURES,
+    TARGET,
+    attach_exogenous,
+    feature_matrix,
+)
 from pypsa_price_forecaster.evaluate import (
     band_scores,
     bus_metrics,
@@ -174,6 +179,38 @@ def test_cross_bus_and_rolling_features_ignore_row_order(table):
     spread = feature_matrix(table, ["spread_europe"]).spread_europe
     # the median bus of every hour has no spread
     assert (spread.abs().groupby([table.run, table.snapshot]).min() < 1e-9).all()
+
+
+def test_context_features_place_an_hour_in_its_day_and_in_europe(table):
+    values = feature_matrix(table, CONTEXT_FEATURES)
+    shuffled = table.sample(frac=1, random_state=0)
+    pd.testing.assert_frame_equal(
+        feature_matrix(shuffled, CONTEXT_FEATURES).sort_index(), values
+    )
+    days = [table.run, table.bus, table.snapshot.dt.date]
+    for rank in ("price_rank_day", "residual_rank_day"):
+        assert (values[rank].groupby(days).max() == 1).all()
+        assert (values[rank] > 0).all()
+    # the Europe totals are the same for every bus and count the zone B1+B2 once
+    hours = [table.run, table.snapshot]
+    europe = values[["vres_share_europe", "margin_europe"]]
+    assert (europe.groupby(hours).nunique() == 1).all().all()
+    zones = table[table.bus != "B2"]
+    share = zones.groupby(hours).supply_vres.sum() / zones.groupby(hours).load.sum()
+    expected = share.reindex(pd.MultiIndex.from_arrays(hours)).to_numpy()
+    np.testing.assert_allclose(values.vres_share_europe, expected)
+    # the ramps are the change of the residual load over three hours, by the daily load
+    bus = table[(table.bus == "A") & (table.year == 2019)].set_index("snapshot")
+    ramps = values[(table.bus == "A") & (table.year == 2019)].set_axis(bus.index)
+    load_day = bus.load.groupby(bus.index.date).transform("mean")
+    residual = bus.load - bus.supply_vres
+    np.testing.assert_allclose(
+        ramps.ramp_3h.iloc[3:], (residual.diff(3) / load_day).iloc[3:]
+    )
+    np.testing.assert_allclose(
+        ramps.ramp_next_3h.iloc[:-3], (-residual.diff(-3) / load_day).iloc[:-3]
+    )
+    assert ramps.ramp_3h.iloc[:3].isna().all()
 
 
 def test_bands_cover_most_hours_and_beat_the_point_price(table, small_lgbm):

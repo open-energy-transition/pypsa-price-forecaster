@@ -62,6 +62,16 @@ pixi run ppf predict path/to/solved_2030.nc -m models/lgbm.joblib -o results/pri
 These are the defaults, chosen in [experiments/NOTES.md](experiments/NOTES.md).
 Also available, but not used by default: `month`, `bus`, `cost_gas`, `cost_coal`, `price_to_gas`, `price_daily_mean`, `price_deviation`, `hour_local`, `dayofweek_local`, `holiday`, and the margins in MW.
 
+`CONTEXT_FEATURES` place an hour in the day of its bus and in Europe as a whole. They are not defaults yet, but the best addition found so far: mean skill 0.187 → 0.229 on held-out years ([experiments/NOTES.md](experiments/NOTES.md), round 21). They need the whole run, every hour of the day and all zones.
+
+| Feature | Meaning |
+|---|---|
+| `price_rel_day` | model price / mean model price of the UTC day |
+| `price_rank_day`, `residual_rank_day` | rank of the model price, and of the load minus available renewables, among the hours of the day |
+| `ramp_3h`, `ramp_next_3h` | change of the load minus available renewables over the past and the coming 3 hours / mean load of the day |
+| `price_rel_europe` | model price / median model price of all buses in the hour |
+| `vres_share_europe`, `margin_europe` | available renewables / load, and available supply / load − 1, summed over all zones |
+
 Available supply is `p_nom × p_max_pu` of generators (without load shedding) and storage units.
 Import capacity is the hourly capacity of the NTC links into the zone.
 Copperplated buses (e.g. DE00 + LUG1) count as one zone.

@@ -4,6 +4,31 @@ Written 2026-10-29 for whoever (human or agent) picks this up next. The user's h
 reaction after round 5: *"performance still does not seem that good."* They're right
 to push on this — read the "Honest assessment" section before doing anything else.
 
+## Update after round 21 (2026-11-11)
+
+- **Context features are the first real gain since round 5.** Eight features that place
+  an hour in the day of its bus and in Europe as a whole (`CONTEXT_FEATURES` in
+  `dataset.py`, network only) lift the mean skill from 0.187 to 0.229 on the year split
+  and from 0.160 to 0.186 forward, in every seed; with the larger trees of round 19,
+  0.233 and 0.194. **Not defaults yet**: the switch changes the report and the
+  dashboard, and `report.py` must build the features on all buses first (it drops the
+  rows without observed price before it builds them).
+- **The model lab** (`experiments/lab.py`, `pixi run -e lab`) scores other libraries,
+  networks and ensembles on the same folds and keeps every held-out correction, so
+  shares and averages need no refit. Scores in `experiments/results_lab.csv`.
+- **Closed:** XGBoost, CatBoost, an MLP, Huber loss, linear leaves, DART, weights per
+  zone and year, weights by likeness to the target year, a relative target, a split
+  into daily level and hourly shape, seed and jackknife ensembles. None beats `lgbm`
+  on the same features.
+- **Open:** a temporal convolution with the context features is the best single model
+  forward (0.198), and its mean with the larger trees reaches 0.247 on the year split
+  and 0.218 forward. It needs more than three training years, PyTorch, and is harder to
+  explain. The earlier "no neural networks" advice below holds for the default; it is
+  the next thing to look at when more backcast years exist.
+- **Review of rounds 1–20** (round 21 in NOTES.md): no leak; the zones DE00+LUG1 and
+  GBNI+IE00 count twice in the bus median (0.187 → 0.182 with each once); the share of
+  0.7 chosen on the scored years costs 0.006 when chosen on the others.
+
 ## Update after rounds 15–16 (2026-11-03)
 
 - **Tables:** `data/tables` now holds every year 2019–2025 on one identical backcast

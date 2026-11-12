@@ -673,3 +673,138 @@ A forecast run would need temperature forecasts, useful for one to two weeks. Tw
 - **The normal keeps about 60 % of the year-split gain and all of the forward one.** The actual weather adds the rest, mostly in 2019 (0.314 against 0.279) and a little in 2022; the other years are within 0.01. So a temperature forecast earns its value over its first one to two weeks, beyond that the normal gives most of it.
 - **The calendar season alone adds nothing** and costs 2022 in both splits. What the normal carries is the season per zone climate: a cold winter in Finland is not a mild one in Spain.
 - Every temperature variant costs forward 2022 (0.009 without, −0.034 to −0.064 with): learned on 2019–2021, the winter price pattern does not hold in the gas crisis.
+
+## Round 21: review of rounds 1–20, other model families, training routines and context features (2026-11-11)
+
+Recipe tables 2019–2025 as in rounds 16–20. Mean / worst skill over the held-out years, 70 % of the correction applied, seed 0 unless stated. The reference is the package default: 3 seeds give 0.184–0.187 / −0.009 to −0.007 on the year split and 0.154–0.162 / −0.002 to 0.009 forward, as in round 19.
+
+### The model lab
+
+`experiments/lab.py` runs candidates that the package classes do not cover (other libraries, networks, ensembles) on the folds of `run.py`. A candidate returns the whole correction of every held-out row; these are kept per row in `results/lab/`, so shares, averages of candidates and other scores need no refit (`lab_scores.py`, `lab_context.py`). The scores are in `results_lab.csv`. The candidate `lgbm` reproduces E138/E139 to the last digit. XGBoost, CatBoost and PyTorch come with the pixi environment `lab` (`pixi run -e lab ...`, linux-64 only); the default and dashboard environments are unchanged.
+
+### Review of the earlier rounds
+
+- **No leak of observed prices.** With the observed prices of 2022 shuffled, the corrections predicted for 2022 on the year split are identical bit for bit: nothing of a held-out year reaches its model.
+- **Two zones count twice.** DE00 and LUG1, and GBNI and IE00, are one market zone each with the same prices, so they are two of the 43 buses in the median and in training. With each zone once (`lab_scores.py --distinct`) the default scores 0.182 / 0.018 on the year split and 0.152 / 0.036 forward, against 0.187 / −0.009 and 0.160 / 0.009. The mean is 0.005–0.008 lower; 2022 turns positive. The tables below give both.
+- **The share of 0.7 was chosen on the years it is scored on** (round 19). With the share of each year chosen on the other held-out years the default scores 0.181 instead of 0.187 on the year split and 0.158 instead of 0.160 forward (`lab_context.py`). The bias is small.
+- **The correction mostly fixes the daily price level, much less the hours within a day.** Split the error of a day into its mean and the rest (`lab_context.py`): in 2025 the default takes the hourly part from 18.21 to 15.09 EUR/MWh and leaves the daily part at 15.9. This is what the context features below go after.
+- **Smaller things, none of them changes a result above:**
+  - `report.py` drops the rows without observed price before it builds features. Features that compare a row with other buses (`spread_europe`, `gas_setter_europe`, and the context features below) then see 43 instead of 50 buses. `fit` and `predict` of the package use the whole table. To fix before such a feature becomes a default.
+  - `holiday` takes the years from the UTC time stamps, so the last UTC hour of a year, local 1 January, is not a holiday in a table of one year.
+  - `vres_share_week` rolls over 168 rows, not 168 hours. The two leap years have 29 February left out, so the window spans that gap.
+  - `reservoir_anomaly` shifts the weekly filling by 7 days as its publication time. ENTSO-E publishes some days later, so the feature may see a few days ahead. Not a default.
+
+### Other model families, on the 13 default features
+
+| candidate | year | forward | year, zones once | forward, zones once |
+|---|---|---|---|---|
+| `lgbm` (reference) | 0.187 / −0.009 | 0.160 / 0.009 | 0.182 / 0.018 | 0.152 / 0.036 |
+| `xgboost`, same tree size and loss | 0.186 / 0.009 | 0.157 / 0.011 | 0.178 / 0.036 | 0.152 / 0.038 |
+| `catboost`, 1500 trees of depth 8 | 0.180 / −0.004 | 0.148 / −0.074 | 0.172 / 0.023 | 0.142 / −0.074 |
+| `mlp`, 3 layers of 256 | 0.189 / −0.005 | 0.124 / −0.040 | 0.186 / 0.022 | 0.120 / −0.038 |
+| `tcn`, convolution over ±63 hours of a bus | 0.205 / −0.024 | 0.154 / −0.007 | 0.195 / −0.001 | 0.143 / −0.008 |
+| `tcn_europe`, + the mean state of all buses per layer | 0.217 / 0.005 | 0.171 / −0.039 | 0.213 / −0.002 | 0.162 / −0.026 |
+
+- **Trees of any library and a network on single rows all land at the same place** on the year split (0.180–0.189). What a row holds is used up; the model family is not the limit.
+- **The network that sees the hours around a row is better** (0.205), and better again when it also sees the other zones (0.217). The information is in the context, not in the row.
+- **Networks need more years than trees.** Forward, the MLP and both TCN are poor for 2021 and 2022 (two or three training years: `tcn` 0.020 and −0.007) and ahead of the trees for 2023–2025 (`tcn_europe` 0.263, 0.273, 0.190 against 0.168, 0.181, 0.130).
+- Cost on 5–6 CPU threads: `lgbm` about 1.5 minutes a fold, `xgboost` 2.5, `mlp` 7, `tcn` 15–20, `catboost` 24.
+
+### Training routines, LightGBM on the 13 default features
+
+| candidate | year | forward |
+|---|---|---|
+| `lgbm` (reference) | 0.187 / −0.009 | 0.160 / 0.009 |
+| `lgbm_larger`, the larger trees of round 19 | 0.195 / 0.002 | 0.163 / 0.013 |
+| `lgbm_staged`: 200, 400, 800, 1200, 2000, 3000 trees | 0.165, 0.179, 0.187, 0.190, 0.191, 0.192 | 0.145, 0.150, 0.160, 0.162, 0.162, 0.166 |
+| `lgbm_slow`, learning rate 0.01 with 2400 trees | 0.186 / −0.007 | 0.160 / 0.014 |
+| `lgbm_half_features`, half the features per tree | 0.192 / −0.007 | 0.159 / 0.001 |
+| `lgbm_extra_trees`, random split points | 0.185 / 0.001 | 0.161 / −0.022 |
+| `lgbm_smooth`, path smoothing and L2 | 0.185 / −0.008 | 0.157 / −0.001 |
+| `lgbm_huber`, Huber loss at 20 EUR/MWh | 0.184 / 0.003 | 0.156 / 0.008 |
+| `lgbm_linear_tree`, linear models in the leaves | 0.191 / 0.020 | 0.070 / −0.268 |
+| `lgbm_dart` | 0.180 / 0.007 | 0.147 / −0.013 |
+| `lgbm_relative`, correction as share of the daily price level | 0.180 / 0.012 | 0.147 / 0.015 |
+| `lgbm_weighted`, every bus and year counts alike | 0.186 / 0.008 | 0.149 / −0.003 |
+| `lgbm_shift`, rows weighted by likeness to the year to predict | 0.184 / 0.011 | 0.126 / −0.008 |
+| `lgbm_level_shape`, one model for the daily mean, one for the hours | 0.169 / 0.024 | 0.155 / 0.023 |
+
+- **No routine beats the reference beyond the seeds** (±0.003 year, ±0.004 forward), apart from the larger trees already found in round 19. More trees still gain a little up to 3000 (+0.005 / +0.006).
+- **Linear leaves extrapolate**: fine within the range of the training years, −0.268 for 2022 forward. The same lesson as the gas-scaled corrections of round 18.
+- **Weighting by likeness to the target year costs the forward split** (0.126): with two or three training years it throws away most of the little there is.
+- **Two models for level and shape are worse than one**: the daily model has 365 rows a bus and year and reaches 0.124 alone, the hourly one 0.057.
+- The weights are applied by drawing rows in proportion to them; LightGBM takes over an hour a fold with weights and the L1 loss.
+
+### Context features: the hours around a row and the other zones
+
+Eight features from the network alone, all without a unit, fixed before the first run. They are now in `dataset.FEATURES` as `CONTEXT_FEATURES` (not defaults):
+
+| feature | meaning |
+|---|---|
+| `price_rel_day` | model price / mean model price of the UTC day of the bus |
+| `price_rank_day`, `residual_rank_day` | rank of the model price, and of the load minus available renewables, among the hours of the day |
+| `ramp_3h`, `ramp_next_3h` | change of the load minus available renewables over the past and the coming 3 hours / mean load of the day |
+| `price_rel_europe` | model price / median model price of all buses in the hour |
+| `vres_share_europe`, `margin_europe` | available renewables / load, and available supply / load − 1, summed over all zones |
+
+| candidate | year | forward | year, zones once | forward, zones once |
+|---|---|---|---|---|
+| `lgbm`, 3 seeds | 0.184–0.187 / −0.009 to −0.007 | 0.154–0.162 / −0.002 to 0.009 | 0.181–0.182 / 0.018 to 0.020 | 0.150–0.161 / 0.025 to 0.036 |
+| `lgbm_context`, + the 8 features, 3 seeds | 0.223–0.229 / 0.031 to 0.033 | 0.185–0.188 / −0.005 to 0.006 | 0.219–0.226 / 0.050 to 0.054 | 0.184–0.186 / 0.011 to 0.017 |
+| `lgbm_larger_context`, larger trees, 3 seeds | **0.230–0.233** / 0.044 to 0.051 | **0.192–0.195** / 0.004 to 0.008 | 0.224–0.228 / 0.054 to 0.059 | 0.188–0.193 / 0.012 to 0.020 |
+| `lgbm_day`, + the 5 day features only | 0.203 / 0.015 | 0.165 / 0.005 | 0.200 / 0.041 | 0.163 / 0.032 |
+| `lgbm_europe`, + the 3 Europe features only | 0.210 / 0.024 | 0.176 / −0.014 | 0.205 / 0.044 | 0.175 / −0.004 |
+
+Skill per held-out year, seed 0:
+
+| | 2019 | 2020 | 2021 | 2022 | 2023 | 2024 | 2025 |
+|---|---|---|---|---|---|---|---|
+| year: `lgbm` | 0.331 | 0.298 | 0.158 | −0.009 | 0.202 | 0.200 | 0.130 |
+| year: `lgbm_context` | 0.339 | 0.400 | 0.180 | 0.033 | 0.225 | 0.252 | 0.170 |
+| year: `lgbm_larger_context` | 0.319 | 0.405 | 0.178 | 0.044 | 0.236 | 0.264 | 0.184 |
+| forward: `lgbm` | | 0.326 | 0.144 | 0.009 | 0.168 | 0.181 | 0.130 |
+| forward: `lgbm_context` | | 0.365 | 0.161 | −0.005 | 0.227 | 0.198 | 0.170 |
+| forward: `lgbm_larger_context` | | 0.370 | 0.165 | 0.004 | 0.237 | 0.206 | 0.184 |
+
+- **The gain is +0.036 to +0.041 on the year split and +0.026 to +0.032 forward in every pair of seeds**, about ten times the seed noise, and the same with each zone counted once. Every year gains on the year split; forward, 2022 stays at zero.
+- **The larger trees add +0.005 to +0.010 on top**, so the two changes stack: 0.233 / 0.194 against 0.187 / 0.160.
+- **It is broad**: 40 of 43 buses and 237 of 292 bus-years gain on the year split (`lab_context.py`). The three that lose are NON1, SE01 and SE02, the hydro north.
+- **Both parts of the error fall.** In 2025 the hourly part goes from 15.09 to 13.39 EUR/MWh; in 2020 the daily part from 6.01 to 4.85. The hourly correlation with the observed price rises in every year, 0.800 → 0.830 in 2025.
+- **It holds with the share chosen on other years**: 0.216 against 0.181 on the year split, 0.196 against 0.158 forward. The best share moves up, to 0.8–0.9 forward.
+- **Leaving out one feature at a time** (year split, against 0.229): `price_rel_europe` 0.210, `price_rel_day` 0.220, `vres_share_europe` 0.221, `price_rank_day`, `ramp_3h` and `ramp_next_3h` 0.222, `margin_europe` 0.225, `residual_rank_day` 0.226. The price against the rest of Europe carries the most; the last two are within the seeds. The set stays as fixed.
+- **A second set, tried after the first one helped, adds nothing**: range of the day and load against the daily mean 0.225 / 0.191, rank of the price in Europe with Europe-wide curtailment and thermal utilisation 0.222 / 0.183, price against its week and its year 0.216 / 0.188, all of them 0.224 / 0.189. Not in the package.
+- **Fitting with each training year left out once and taking the mean or median** gives 0.228–0.229 / 0.187–0.189: no gain for six times the fits. Three seeds averaged give 0.226 / 0.187, and 0.234 / 0.195 with the larger trees: no gain either.
+
+### Networks with the context features, and averages of trees and networks
+
+| candidate | year | forward | year, zones once | forward, zones once |
+|---|---|---|---|---|
+| `mlp_context` | 0.222 / −0.006 | 0.164 / −0.070 | 0.209 / −0.013 | 0.149 / −0.069 |
+| `tcn_context`, 2 seeds | 0.216–0.222 / −0.041 to −0.008 | 0.186–0.198 / 0.030 to 0.032 | 0.212 / −0.023 (1 seed) | 0.195 / 0.040 (1 seed) |
+| mean of `lgbm_larger_context` and `tcn_context` | **0.247** / 0.013 | **0.218** / 0.019 | 0.240 / 0.033 | 0.206 / 0.034 |
+| mean of `lgbm_larger_context` and `tcn_europe` | 0.243 / 0.020 | 0.201 / −0.017 | 0.238 / 0.038 | 0.198 / 0.006 |
+| mean of `lgbm_larger_context` and `mlp_context` | 0.238 / 0.000 | 0.196 / −0.039 | 0.234 / 0.013 | 0.187 / −0.018 |
+| mean of all three with context | 0.242 / −0.004 | 0.209 / −0.013 | 0.237 / 0.014 | 0.197 / 0.006 |
+
+- **The context features help the networks too**: the MLP goes from 0.189 to 0.222 on the year split, level with the trees. The TCN gains less (0.205 → 0.216), as it already sees the hours around a row.
+- **The TCN with context is the best single model forward** (0.186–0.198 over 2 seeds; 2023–2025 of seed 0: 0.279, 0.241, 0.201 against 0.237, 0.206, 0.184 of the larger trees), and the worst for 2022 on the year split in both seeds (−0.041, −0.008).
+- **The mean of the larger trees and the TCN, both with context, is the best result of the round**: +0.014 on the year split and +0.024 forward over the trees alone, where averaging seeds or training years of the trees gave nothing. The two make different errors. It needs PyTorch and about 15 minutes a fold on CPU, and a network is harder to explain than the trees. One seed of the mean so far, one more seed of `tcn_context` alone; see the caveats.
+
+### Caveats
+
+- About 50 candidates were scored on the same seven held-out years. The first context set and the settings of the networks were fixed before their first run; the second context set, the larger trees on top and the averages were chosen after seeing results. The numbers to trust most are those of `lgbm_context`; the average with the TCN is the most selected one.
+- The context features need the whole run: every hour of the day and all zones. A table of some zones or of part of a year gives other values.
+- The first 3 hours after the left-out 29 February of 2020 and 2024 have no ramp in the package (300 of 3 million rows); the lab runs took the ramp across the gap there.
+
+### Round 21 conclusions
+
+- **New defaults: the 13 features of a row plus `CONTEXT_FEATURES`, with the larger trees**, 0.233 / 0.044 on the year split and 0.194 / 0.004 forward against 0.187 / −0.009 and 0.160 / 0.009. Still trees on features of the network alone, about 2.5 to 3 times the training time.
+- **The network is the next step, not this one.** The average with the TCN is worth another +0.014 / +0.024, at the cost of a second, less explainable model. It gains with every training year, so it gets more attractive as backcast years are added.
+- **Other tree libraries, losses, weightings, regularisation and ensembles of trees are closed**: none beats the reference.
+
+### Adopted (2026-11-11, user decision)
+
+- `DEFAULT_FEATURES` = `BASE_FEATURES` (the 13 features of rounds 5–20) + `CONTEXT_FEATURES`; `lgbm` with 127 leaves, at least 25 rows a leaf and 1200 trees.
+- `report.py` fits every model on all rows of the tables, the buses without observed price included, and scores the rows with observed price. Before, it dropped those buses first, so features comparing buses saw 43 of 50.
+- `run.py` keeps `BASE_FEATURES` as its `DEFAULT_FEATURES`, so the earlier experiments keep their meaning; they ran with the smaller trees.
+- **Report regenerated** (`pixi run report`, commit `2a91ddd`): median MAE 19.30 → 18.51, r 0.802 → 0.828. Skill per year: 0.324, 0.403, 0.176, 0.035, 0.239, 0.265, 0.185 (mean 0.232, worst 0.035, 2022); every year gains and 2022 turns positive for the first time, matching the lab's `lgbm_larger_context` (0.233 / 0.044) within the usual seed noise.

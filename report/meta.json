@@ -1,6 +1,6 @@
 {
-  "created": "2026-11-03T21:15:47+00:00",
-  "commit": "32ee81c",
+  "created": "2026-11-11T20:16:48+00:00",
+  "commit": "2a91ddd",
   "dirty": false,
   "version": "0.1.0",
   "runs": [
@@ -38,14 +38,22 @@
     "storage_share",
     "price_setter",
     "imports_congested",
-    "exports_congested"
+    "exports_congested",
+    "price_rel_day",
+    "price_rank_day",
+    "residual_rank_day",
+    "ramp_3h",
+    "ramp_next_3h",
+    "price_rel_europe",
+    "vres_share_europe",
+    "margin_europe"
   ],
   "lgbm_params": {
     "colsample_bytree": 0.9,
     "learning_rate": 0.03,
-    "min_child_samples": 50,
-    "n_estimators": 800,
-    "num_leaves": 63,
+    "min_child_samples": 25,
+    "n_estimators": 1200,
+    "num_leaves": 127,
     "objective": "l1",
     "random_state": 0,
     "subsample": 0.8,
@@ -54,9 +62,9 @@
     "shrink": 0.7
   },
   "seed_mae": [
-    19.2963,
-    19.2926,
-    19.5149
+    18.511,
+    18.3229,
+    18.4963
   ],
   "bands": true,
   "excluded_years": []

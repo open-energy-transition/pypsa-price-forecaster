@@ -31,9 +31,19 @@ streamlit = ">=1.50"
 [feature.dashboard.tasks]
 dashboard = "streamlit run dashboard/app.py"
 
+# other model families for experiments/lab.py, not needed by the package
+[feature.lab]
+platforms = ["linux-64"]
+
+[feature.lab.dependencies]
+catboost = ">=1.2"
+pytorch-cpu = ">=2.4"
+xgboost = ">=2.1"
+
 [environments]
 default = { features = ["dev"], solve-group = "default" }
 dashboard = { features = ["dev", "dashboard"], solve-group = "default" }
+lab = { features = ["dev", "lab"], solve-group = "lab" }
 
 [tasks]
 test = "pytest"

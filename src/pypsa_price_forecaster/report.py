@@ -128,7 +128,7 @@ def monthly(table: pd.DataFrame, predictions: pd.DataFrame) -> pd.DataFrame:
 def ablation(
     table: pd.DataFrame, split: str, folds: int, features: list[str]
 ) -> pd.DataFrame:
-    """Return the scores of ``lgbm`` without each of `features` and with each other feature `table` has the variables of."""
+    """Return the scores of ``lgbm`` without each of `features` and with each other feature `table` has the variables of, over its rows with observed price."""
     variants = [("without", f, [g for g in features if g != f]) for f in features]
     variants += [
         ("with", f, [*features, f])
@@ -139,7 +139,10 @@ def ablation(
     for change, feature, used in variants:
         logger.info(f"Ablation: lgbm {change} {feature}.")
         predictions = cross_validate(table, ["lgbm"], used, split, folds)
-        result[(change, feature)] = scores(table, predictions).loc["lgbm"]
+        rows = labelled(table)
+        result[(change, feature)] = scores(rows, predictions.loc[rows.index]).loc[
+            "lgbm"
+        ]
     return pd.DataFrame(result).T.rename_axis(["change", "feature"])
 
 
@@ -219,14 +222,18 @@ def write_report(
     out = Path(out)
     out.mkdir(parents=True, exist_ok=True)
     exclude_years = sorted(exclude_years or [])
-    table = labelled(table[~table.year.isin(exclude_years)]).reset_index(drop=True)
+    # the models see every row, as features compare a row with other buses and
+    # hours; the scores and files cover the rows with observed price
+    whole = table[~table.year.isin(exclude_years)].reset_index(drop=True)
+    table = labelled(whole)
     split = split or default_split(table)
     features = list(DEFAULT_FEATURES if features is None else features)
 
-    predictions = cross_validate(table, DEFAULT_MODELS, features, split, folds)
+    predictions = cross_validate(whole, DEFAULT_MODELS, features, split, folds)
+    predictions = predictions.loc[table.index]
     bands = None
     if with_bands and split == "year" and table.year.nunique() >= 3:
-        bands = cross_validate_bands(table, "lgbm", features, split)
+        bands = cross_validate_bands(whole, "lgbm", features, split).loc[table.index]
         band_scores(table, bands).round(3).to_csv(out / "band_scores.csv")
     else:
         (out / "band_scores.csv").unlink(missing_ok=True)
@@ -238,23 +245,23 @@ def write_report(
     prices(table, predictions, bands).to_parquet(
         out / "prices.parquet", compression="zstd", compression_level=19
     )
-    importance(table, features).to_csv(out / "importance.csv", index_label="feature")
+    importance(whole, features).to_csv(out / "importance.csv", index_label="feature")
     price_setters(table).to_csv(out / "price_setters.csv")
 
     seed_mae = [result.mae["lgbm"]]
     if with_ablation:
-        ablation(table, split, folds, features).to_csv(out / "ablation.csv")
+        ablation(whole, split, folds, features).to_csv(out / "ablation.csv")
         for seed in SEEDS:
             logger.info(f"Repeating lgbm with seed {seed}.")
             repeat = cross_validate(
-                table,
+                whole,
                 ["lgbm"],
                 features,
                 split,
                 folds,
                 {"lgbm": {"random_state": seed}},
             )
-            seed_mae.append(scores(table, repeat).mae["lgbm"])
+            seed_mae.append(scores(table, repeat.loc[table.index]).mae["lgbm"])
 
     commit, dirty = git_commit()
     created = datetime.now(UTC).isoformat(timespec="seconds")

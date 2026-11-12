@@ -108,6 +108,54 @@ def daily_mean(table: pd.DataFrame, values: pd.Series) -> pd.Series:
     return values.replace([np.inf, -np.inf], np.nan).groupby(days).transform("mean")
 
 
+def rank_in_day(table: pd.DataFrame, values: pd.Series) -> pd.Series:
+    """Rank of `values` among the hours of the UTC day of the bus, as share from 0 to 1."""
+    days = [table.run, table.bus, table.snapshot.dt.date]
+    return values.groupby(days).rank(pct=True)
+
+
+def residual_ramp(table: pd.DataFrame, hours: int) -> pd.Series:
+    """
+    Change of the residual load over the past `hours`, as share of the mean load of the day.
+
+    The residual load is the load minus the available renewables, what storage,
+    imports and thermal plants have to follow. Negative `hours` give the change
+    over the coming hours instead.
+    """
+    residual = table.load - table.supply_vres
+    other = table.snapshot - pd.Timedelta(hours=hours)
+    now = pd.MultiIndex.from_arrays([table.run, table.bus, table.snapshot])
+    there = pd.MultiIndex.from_arrays([table.run, table.bus, other])
+    before = pd.Series(residual.to_numpy(), index=now).reindex(there).to_numpy()
+    return np.sign(hours) * (residual - before) / daily_mean(table, table.load)
+
+
+def europe_total(table: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
+    """Sum of `columns` over all zones of the run in the same hour, for every row."""
+    # the columns are zone totals repeated for every bus of a zone: count each zone once
+    zones = table.drop_duplicates(["run", "snapshot", "zone"])
+    total = zones.groupby(["run", "snapshot"])[columns].sum()
+    hours = pd.MultiIndex.from_arrays([table.run, table.snapshot])
+    return total.reindex(hours).set_axis(table.index)
+
+
+def europe_vres_share(table: pd.DataFrame) -> pd.Series:
+    total = europe_total(table, ["supply_vres", "load"])
+    return total.supply_vres / total.load
+
+
+def europe_margin(table: pd.DataFrame) -> pd.Series:
+    columns = ["supply_firm", "supply_vres", "supply_storage", "load"]
+    total = europe_total(table, columns)
+    return supply(total) / total.load - 1
+
+
+def europe_price_ratio(table: pd.DataFrame) -> pd.Series:
+    """Model price over the median model price of all buses of the run in the same hour."""
+    median = table.groupby([table.run, table.snapshot]).model_price.transform("median")
+    return table.model_price / median.clip(lower=1.0)
+
+
 def gas_sets_price(table: pd.DataFrame) -> pd.Series:
     return (table.price_setter == "gas").astype(float)
 
@@ -181,6 +229,15 @@ FEATURES: dict[str, Callable[[pd.DataFrame], pd.Series]] = {
     "price_to_gas": lambda t: t.model_price / t.cost_gas,
     "price_daily_mean": daily_mean_price,
     "price_deviation": lambda t: t.model_price - daily_mean_price(t),
+    # where an hour sits in the day of its bus and in Europe as a whole (round 21)
+    "price_rel_day": lambda t: t.model_price / daily_mean_price(t).clip(lower=1.0),
+    "price_rank_day": lambda t: rank_in_day(t, t.model_price),
+    "residual_rank_day": lambda t: rank_in_day(t, t.load - t.supply_vres),
+    "ramp_3h": lambda t: residual_ramp(t, 3),
+    "ramp_next_3h": lambda t: residual_ramp(t, -3),
+    "price_rel_europe": europe_price_ratio,
+    "vres_share_europe": europe_vres_share,
+    "margin_europe": europe_margin,
     "bus": lambda t: t.bus.astype("category"),
     "price_setter": lambda t: pd.Categorical(t.price_setter, categories=SETTERS),
     "imports_congested": lambda t: t.import_congested / t.import_capacity,
@@ -221,8 +278,8 @@ VARIABLES = {
     "load_forecast_error": "load_forecast",
     "vres_forecast_error": "vres_forecast",
 }
-# best set on held-out years from the network alone (experiments/NOTES.md, round 5)
-DEFAULT_FEATURES = [
+# features of a row, the defaults of rounds 5 to 20 (experiments/NOTES.md)
+BASE_FEATURES = [
     "model_price",
     "margin_domestic",
     "margin_with_imports",
@@ -237,6 +294,20 @@ DEFAULT_FEATURES = [
     "imports_congested",
     "exports_congested",
 ]
+# the hours around a row and the other zones (round 21)
+CONTEXT_FEATURES = [
+    "price_rel_day",
+    "price_rank_day",
+    "residual_rank_day",
+    "ramp_3h",
+    "ramp_next_3h",
+    "price_rel_europe",
+    "vres_share_europe",
+    "margin_europe",
+]
+# best set on held-out years from the network alone (round 21); the context
+# features need the whole run, every hour of the day and every bus
+DEFAULT_FEATURES = BASE_FEATURES + CONTEXT_FEATURES
 
 
 def has_variables(table: pd.DataFrame, feature: str) -> bool:

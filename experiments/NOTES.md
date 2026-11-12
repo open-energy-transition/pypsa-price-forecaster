@@ -780,15 +780,15 @@ Skill per held-out year, seed 0:
 | candidate | year | forward | year, zones once | forward, zones once |
 |---|---|---|---|---|
 | `mlp_context` | 0.222 / −0.006 | 0.164 / −0.070 | 0.209 / −0.013 | 0.149 / −0.069 |
-| `tcn_context` | 0.216 / −0.041 | 0.198 / 0.030 | 0.212 / −0.023 | 0.195 / 0.040 |
+| `tcn_context`, 2 seeds | 0.216–0.222 / −0.041 to −0.008 | 0.186–0.198 / 0.030 to 0.032 | 0.212 / −0.023 (1 seed) | 0.195 / 0.040 (1 seed) |
 | mean of `lgbm_larger_context` and `tcn_context` | **0.247** / 0.013 | **0.218** / 0.019 | 0.240 / 0.033 | 0.206 / 0.034 |
 | mean of `lgbm_larger_context` and `tcn_europe` | 0.243 / 0.020 | 0.201 / −0.017 | 0.238 / 0.038 | 0.198 / 0.006 |
 | mean of `lgbm_larger_context` and `mlp_context` | 0.238 / 0.000 | 0.196 / −0.039 | 0.234 / 0.013 | 0.187 / −0.018 |
 | mean of all three with context | 0.242 / −0.004 | 0.209 / −0.013 | 0.237 / 0.014 | 0.197 / 0.006 |
 
 - **The context features help the networks too**: the MLP goes from 0.189 to 0.222 on the year split, level with the trees. The TCN gains less (0.205 → 0.216), as it already sees the hours around a row.
-- **The TCN with context is the best single model forward** (0.198 / 0.030; 2023–2025: 0.279, 0.241, 0.201 against 0.237, 0.206, 0.184 of the larger trees), and the worst for 2022 on the year split (−0.041).
-- **The mean of the larger trees and the TCN, both with context, is the best result of the round**: +0.014 on the year split and +0.024 forward over the trees alone, where averaging seeds or training years of the trees gave nothing. The two make different errors. It needs PyTorch and about 15 minutes a fold on CPU, and a network is harder to explain than the trees. One seed of each network so far; see the caveats.
+- **The TCN with context is the best single model forward** (0.186–0.198 over 2 seeds; 2023–2025 of seed 0: 0.279, 0.241, 0.201 against 0.237, 0.206, 0.184 of the larger trees), and the worst for 2022 on the year split in both seeds (−0.041, −0.008).
+- **The mean of the larger trees and the TCN, both with context, is the best result of the round**: +0.014 on the year split and +0.024 forward over the trees alone, where averaging seeds or training years of the trees gave nothing. The two make different errors. It needs PyTorch and about 15 minutes a fold on CPU, and a network is harder to explain than the trees. One seed of the mean so far, one more seed of `tcn_context` alone; see the caveats.
 
 ### Caveats
 
@@ -807,3 +807,4 @@ Skill per held-out year, seed 0:
 - `DEFAULT_FEATURES` = `BASE_FEATURES` (the 13 features of rounds 5–20) + `CONTEXT_FEATURES`; `lgbm` with 127 leaves, at least 25 rows a leaf and 1200 trees.
 - `report.py` fits every model on all rows of the tables, the buses without observed price included, and scores the rows with observed price. Before, it dropped those buses first, so features comparing buses saw 43 of 50.
 - `run.py` keeps `BASE_FEATURES` as its `DEFAULT_FEATURES`, so the earlier experiments keep their meaning; they ran with the smaller trees.
+- **Report regenerated** (`pixi run report`, commit `2a91ddd`): median MAE 19.30 → 18.51, r 0.802 → 0.828. Skill per year: 0.324, 0.403, 0.176, 0.035, 0.239, 0.265, 0.185 (mean 0.232, worst 0.035, 2022); every year gains and 2022 turns positive for the first time, matching the lab's `lgbm_larger_context` (0.233 / 0.044) within the usual seed noise.
